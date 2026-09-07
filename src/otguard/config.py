@@ -373,8 +373,26 @@ class SiteModelConfig:
     ambient_c: float = 25.0
     temp_derate_c: float = 45.0
     temp_max_c: float = 58.0
+    # The protection set-point the guard is told to respect. A nameplate figure,
+    # not a secret: knowing where the equipment trips is not the same as knowing
+    # the plant's true thermal parameters, which the entries above deliberately
+    # get slightly wrong.
+    temp_trip_c: float = 52.0
     soc_derate_low: float = 0.10
     soc_derate_high: float = 0.90
+    # The guard's model of the transformer and house load, used to refer the
+    # Megapack telemetry sum (measured at the LV bus) to the point of
+    # interconnection (where the meter and relay measure). Without this the
+    # three "measurements of site power" are measurements of two different
+    # quantities and the telemetry sum is an outlier by construction.
+    #
+    # Slightly wrong on purpose, like every other entry here. The residual error
+    # after referral is what sets the floor on how tight the cross-source
+    # agreement band can be.
+    aux_base_mw: float = 0.16
+    transformer_loss_mw: float = 0.26
+    transformer_noload_mw: float = 0.032
+    poi_rating_mw: float = 25.0
 
 
 @dataclass(frozen=True)
