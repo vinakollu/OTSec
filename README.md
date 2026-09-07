@@ -79,10 +79,11 @@ counterfactual.
 ```bash
 pip install -r requirements.txt
 
-python scripts/run_eval.py --stealth-sweep   # full evaluation + figures
+python scripts/run_eval.py --stealth-sweep    # water tank: eval + sweep + figures
+python scripts/run_site_eval.py --sweeps     # storage site: eval + sweeps + figures
 python scripts/run_demo.py --attack overflow # live attack over real Modbus TCP
 python scripts/bench_latency.py              # where the time goes
-python -m pytest                             # 93 tests
+python -m pytest                             # 178 tests
 ```
 
 `run_eval.py` writes `results/metrics.json` and a trace figure per scenario to
@@ -195,6 +196,90 @@ future work.
 - **The attacker cannot reach the guard.** If they can modify the guard or the
   wiring, none of this holds.
 
+## The storage-site add-on
+
+The tank version ended with a limitation it could not fix: a slow enough bias on
+the level transmitter was undetectable, because *"residual detectors bound an
+attacker's rate, not their eventual displacement. Closing it needs a physically
+independent second measurement."*
+
+A battery energy storage site has three. The point of interconnection is metered
+by the revenue meter, by the sum of what the Megapacks report, and by the
+protection relay's current transformers — different hardware, different cabling,
+different protocols, all measuring the same power. The redundancy is already
+paid for on revenue and protection grounds; using it for detection is free.
+
+So the guard now also runs against a utility-scale site modelled on a Megapack
+installation: sixteen 1.927 MW units (30.8 MW, 62 MWh) behind a 20 MW export
+limit and a 25 MVA transformer, with a site controller, protection relays, a
+revenue meter, redundant switching, SCADA, a jump server and a firewall,
+speaking Modbus TCP, DNP3, GOOSE, PRP and REST.
+
+### Site results
+
+13 attacks, 7 benign transients, each run guarded and unguarded.
+
+| Metric | Result |
+| --- | --- |
+| Attack detection | **13/13** |
+| Damage avoidance | **5/5** attacks that damaged the site unguarded |
+| Benign scenarios clean | **7/7** |
+| Benign writes flagged | **0** of 3783 |
+| Lying measurement named correctly | **1/1** |
+| Added decision latency | **p50 144 µs, p99 250 µs** — 0.14% of a 100 ms dispatch cycle |
+
+Suite-wide, 1200 of 7831 benign-labelled writes are flagged, almost all of them
+the site controller's own writes *inside attack scenarios*, refused after the
+guard established that a unit was lying about its state. Both denominators are
+reported for the same reason the tank version reports both: neither alone is
+honest.
+
+### The result that justifies it
+
+Biasing the revenue meter across a 250× range of ramp rates:
+
+| ramp (mW/s) | detected | bias accumulated by then |
+| --- | --- | --- |
+| 0.20 | 1309 s | 262 kW |
+| 1.00 | 298 s | 298 kW |
+| 10.0 | 46 s | 455 kW |
+| 50.0 | 14 s | 725 kW |
+| **1.00, voting disabled** | **never** | — |
+
+The third column is the point. It stays between 262 and 725 kW while the rate
+changes by two and a half orders of magnitude, and the *slowest* attacker is
+caught at the *smallest* displacement. Cross-source voting bounds how far an
+attacker can move a measurement rather than how fast — the bound the tank
+version could not achieve. The last row reproduces the tank's blind spot with
+voting switched off, which is what makes the comparison mean anything.
+
+### Where the site guard fails
+
+`stealth_dispatch_creep` is in the suite because it defeats the design. B3
+objects only when a command makes an existing excursion *worse* — which is what
+stops it blocking an operator's recovery, and is also an escape hatch:
+
+| step (MW per unit per 20 s) | detected | peak MW over export limit |
+| --- | --- | --- |
+| 0.002 | never | 0.00 (too slow to matter) |
+| **0.005** | **never** | **2.77** |
+| 0.010 | 1300 s | 4.76 |
+| 0.200 | 160 s | 0.04 |
+
+At 0.005 MW per unit the attack is never caught and puts the site 2.77 MW over
+its export limit; in the band that *is* caught, the site still reaches 4.8 MW
+over first. Same character as the tank's 2 mm/s band: no threshold fixes it,
+because tightening trades directly against the false-alarm rate that decides
+whether operators leave the guard installed.
+
+And **13/13 is not a generalisation claim** — it is thirteen scenarios written
+by the same person who wrote the rules, with several thresholds set after
+looking at them. The sweeps exist because a boundary means something a sample
+does not.
+
+Full detail, including the threat model and what is byte-exact versus modelled,
+is in [`docs/bess-design.md`](docs/bess-design.md).
+
 ## Repository layout
 
 ```
@@ -206,22 +291,34 @@ src/otguard/
     estimator.py       Kalman filter, CUSUM, lookahead, equilibrium
     rules.py           R1..R5
     guard.py           decision engine, supervision, trips, lockout
+    site_estimator.py  per-pack SoC/thermal estimation, cross-source voting
+    site_rules.py      B1..B8
+    site_guard.py      site decision engine, supervision, curtailment
+  bess/                Megapack electro-thermal model, fleet, POI, three meters
+  site/topology.py     IEC 62443 zones and conduits over the Purdue levels
+  protocols/
+    dnp3.py            framing with the real 0x3D65 CRC, CROB, select-before-operate
+    goose.py           IEC 61850 frames, stNum/sqNum semantics, subscriber
+    prp.py             redundancy control trailer, dual-LAN discrepancy
+    rest.py            site controller API, roles and tokens
   scenarios/           labelled attacks and benign transients (ground truth)
-  eval/                harness, metrics, figures, CLI
+  eval/                harness, metrics, sweeps, figures, CLI
   modbus/
     protocol.py        MBAP/PDU framing
     plc_server.py      simulated PLC (obeys anything, by design)
     proxy.py           the bump-in-the-wire
 config/default.yaml    every tunable number, with the reasoning
-scripts/               run_eval.py, run_demo.py, bench_latency.py
-tests/                 93 tests
-docs/                  design.md, heilmeier.md, threat model
+scripts/               run_eval.py, run_site_eval.py, run_demo.py, bench_latency.py
+tests/                 178 tests
+docs/                  design.md, bess-design.md, heilmeier.md
 ```
 
 ## Documentation
 
 - [`docs/design.md`](docs/design.md) — threat model, architecture, and why each
   rule is shaped the way it is
+- [`docs/bess-design.md`](docs/bess-design.md) — the storage-site add-on:
+  site physics, rules B1..B8, protocols, results, and where it fails
 - [`docs/heilmeier.md`](docs/heilmeier.md) — the Heilmeier questions
 - [`config/default.yaml`](config/default.yaml) — the parameters, each with the
   reasoning for its value

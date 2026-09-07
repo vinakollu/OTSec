@@ -124,7 +124,7 @@ handful of scenarios. Achieved.
    round-trip on the wire.
 
 Plus a characterised failure mode (question 8) and a reproducible harness: one
-command regenerates every number and figure, and 93 tests pin the behaviour —
+command regenerates every number and figure, and 178 tests pin the behaviour —
 including two that guard the *evaluation* itself, so a benign scenario cannot
 quietly drift into genuinely unsafe territory and score a correct trip as a false
 alarm.
