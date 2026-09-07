@@ -247,8 +247,23 @@ class EnergyConfig:
 
     process_noise_soc: float = 2e-5
     sensor_noise_soc: float = 0.001
-    cusum_threshold: float = 25.0
-    cusum_slack: float = 1.0
+    # Set so that a battery-management re-anchor at the top of charge — a
+    # bounded, one-off correction of a few percent — does not latch, while a
+    # sustained offset large enough to hide over-discharge does.
+    #
+    # This is a magnitude discriminator, not a structural one, and it is worth
+    # being plain about that: a re-anchor and a spoof have the same shape, a
+    # step followed by a constant offset. The weak filter gain means the
+    # accumulated CUSUM from a step is bounded rather than unbounded, so the
+    # threshold separates them by size. scripts/run_site_eval.py --soc-sweep
+    # measures where that boundary actually falls.
+    cusum_threshold: float = 150.0
+    # The slack has to exceed the largest *persistent* residual that honest
+    # operation leaves behind, or the CUSUM integrates model error without
+    # bound and alarms on any site given enough uptime. A latched alarm puts
+    # the estimator open-loop, so it can never re-converge afterwards — the
+    # failure compounds rather than settling.
+    cusum_slack: float = 2.0
     latch_alarm: bool = True
 
 
@@ -273,7 +288,11 @@ class SiteRampConfig:
 
     deadband_hz: float = 0.036        # normal interconnection frequency band
     event_multiplier: float = 6.0     # ramp allowance during a real excursion
-    window_s: float = 2.0
+    # Must span at least one dispatch write period. A site controller issues a
+    # ramp as a sequence of set-point steps, so a window shorter than its write
+    # period contains exactly one step and measures the step height over the
+    # window length — roughly double the true rate — flagging every honest ramp.
+    window_s: float = 4.0
 
 
 @dataclass(frozen=True)
@@ -390,9 +409,21 @@ class SiteModelConfig:
     # after referral is what sets the floor on how tight the cross-source
     # agreement band can be.
     aux_base_mw: float = 0.16
+    # House load rises with pack temperature — the thermal management system is
+    # itself a load. Omitting this term costs about half a megawatt on a hot day,
+    # which lands directly in the bus-to-POI referral and shows up as the
+    # telemetry sum disagreeing with the meter and the relay.
+    aux_thermal_mw_per_c: float = 0.0019
+    ambient_ref_c: float = 25.0
     transformer_loss_mw: float = 0.26
     transformer_noload_mw: float = 0.032
     poi_rating_mw: float = 25.0
+    # Inverter slew, so the estimator can predict the power that was actually
+    # *delivered* rather than the power that was asked for. Without this the
+    # energy balance diverges during every ramp and derate, because the plant
+    # integrates what the inverter did and the estimator integrates the
+    # set-point.
+    slew_mw_s: float = 4.8
 
 
 @dataclass(frozen=True)

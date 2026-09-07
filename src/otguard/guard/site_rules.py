@@ -64,6 +64,7 @@ class SiteContext:
     lockout_directions: frozenset[str] = frozenset()
     safety_trip_c: float = 52.0
     recent_power: Sequence[tuple[float, float]] = ()
+    recent_command_mw: Sequence[tuple[float, float]] = ()
     observation: SiteObservation | None = None
 
     def commanded_pack_power(self, exclude: str = "") -> float:
@@ -328,7 +329,7 @@ class RampRule:
         else:
             proposed = command.value
 
-        window = [(t, p) for t, p in ctx.recent_power if ctx.now - t <= cfg.window_s]
+        window = [(t, p) for t, p in ctx.recent_command_mw if ctx.now - t <= cfg.window_s]
         if not window:
             return None
         reference_t, reference_p = window[0]
@@ -407,6 +408,31 @@ class ThermalRule:
         _, held_peak = _project_temp(est, cfg.horizon_s, held_power, held_cooling)
         _, candidate_peak = _project_temp(est, cfg.horizon_s, candidate_power, candidate_cooling)
 
+        # Where the commanded configuration *settles*, not just where it gets
+        # to inside the horizon. With thermal management off the time constant
+        # runs to hours, so a 300 s lookahead sees a couple of degrees and stays
+        # quiet while the unit is on its way to well past the trip. The
+        # equilibrium needs no horizon at all: it is the temperature at which
+        # generated heat and removed heat balance, and if that is beyond the
+        # trip the unit gets there eventually no matter how slowly.
+        candidate_eq = _equilibrium_temp(est, candidate_power, candidate_cooling)
+        held_eq = _equilibrium_temp(est, held_power, held_cooling)
+        if candidate_eq > trip_c and candidate_eq > held_eq + 1e-6:
+            detail = (
+                f"{command.device} settles at {candidate_eq:.0f} C under the "
+                f"commanded configuration against a {trip_c:.1f} C trip, versus "
+                f"{held_eq:.0f} C for the command it currently holds"
+            )
+            if command.kind is SiteCommandKind.PACK_COOLING and not candidate_cooling:
+                detail = (
+                    f"{command.device} thermal management commanded off: with "
+                    f"{held_power:.2f} MW held the unit settles at {candidate_eq:.0f} C "
+                    f"against a {trip_c:.1f} C trip (it settles at {held_eq:.0f} C with "
+                    f"cooling running). The approach is slow, so the horizon check "
+                    f"cannot see it, but the destination is outside the envelope"
+                )
+            return RuleFinding(self.rule_id, self.name, detail, margin=candidate_eq - trip_c)
+
         if candidate_peak <= trip_c - cfg.margin_c:
             return None
         if candidate_peak <= held_peak + 1e-6:
@@ -428,15 +454,31 @@ class ThermalRule:
         return RuleFinding(self.rule_id, self.name, detail, margin=candidate_peak - trip_c)
 
 
+def _equilibrium_temp(est: PackEstimator, p_mw: float, cooling: bool) -> float:
+    """Temperature at which conversion loss equals heat removal."""
+    m = est.model
+    rated = max(m.power_mw, 1e-9)
+    loss_at_rated = rated * (1.0 - m.efficiency)
+    delivered = est.deliverable_mw(p_mw, est.estimate.soc, est.estimate.temp_c)
+    s = math.hypot(delivered, est.estimate.q_mvar)
+    loss = loss_at_rated * (s / rated) ** 2
+    coeff = m.cooling_mw_per_c if cooling else m.cooling_mw_per_c * 0.1
+    return m.ambient_c + loss / max(coeff, 1e-12)
+
+
 def _project_temp(est: PackEstimator, horizon_s: float, p_mw: float, cooling: bool):
     """Roll one unit's temperature forward under a hypothetical command."""
     e = est.estimate
     soc, temp = e.soc, e.temp_c
+    actual = est._p_actual_mw
     peak = temp
     dt = 5.0
     for _ in range(max(1, int(horizon_s / dt))):
-        soc = est.predict_soc(soc, p_mw, dt)
-        temp = est.predict_temp(temp, p_mw, e.q_mvar, dt, cooling)
+        target = est.deliverable_mw(p_mw, soc, temp)
+        step = est.model.slew_mw_s * dt
+        actual += max(-step, min(step, target - actual))
+        soc = est.predict_soc(soc, actual, dt)
+        temp = est.predict_temp(temp, actual, e.q_mvar, dt, cooling)
         peak = max(peak, temp)
     return soc, peak
 

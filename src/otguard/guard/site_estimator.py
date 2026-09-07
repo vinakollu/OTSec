@@ -81,10 +81,36 @@ class PackEstimator:
         self.cfg = energy
         self.estimate = PackEstimate(device=device, soc=initial_soc, temp_c=initial_temp_c)
         self._variance = energy.sensor_noise_soc**2
+        # What the inverter is actually delivering, as distinct from what it was
+        # told to deliver. The plant integrates the former; an estimator that
+        # integrates the latter diverges on every ramp and every derate, and the
+        # resulting residual is indistinguishable from an attack.
+        self._p_actual_mw = 0.0
 
     # -- command tracking ------------------------------------------------
     def note_power(self, p_mw: float) -> None:
         self.estimate.p_mw = p_mw
+
+    def deliverable_mw(self, p_cmd_mw: float, soc: float, temp_c: float) -> float:
+        """Clamp a set-point to what the modelled unit could actually produce."""
+        m = self.model
+        thermal = 1.0
+        if temp_c > m.temp_derate_c:
+            span = max(m.temp_max_c - m.temp_derate_c, 1e-6)
+            thermal = _clamp((m.temp_max_c - temp_c) / span, 0.0, 1.0)
+        if p_cmd_mw >= 0.0:
+            soc_factor = 1.0 if soc >= m.soc_derate_low else _clamp(soc / max(m.soc_derate_low, 1e-6), 0.0, 1.0)
+            return min(p_cmd_mw, m.power_mw * soc_factor * thermal)
+        span = max(1.0 - m.soc_derate_high, 1e-6)
+        soc_factor = 1.0 if soc <= m.soc_derate_high else _clamp((1.0 - soc) / span, 0.0, 1.0)
+        return -min(-p_cmd_mw, m.power_mw * soc_factor * thermal)
+
+    def _advance_actual(self, dt: float, soc: float, temp_c: float) -> float:
+        """Slew the delivered power toward the clamped set-point."""
+        target = self.deliverable_mw(self.estimate.p_mw, soc, temp_c)
+        step = self.model.slew_mw_s * dt
+        self._p_actual_mw += _clamp(target - self._p_actual_mw, -step, step)
+        return self._p_actual_mw
 
     def note_reactive(self, q_mvar: float) -> None:
         self.estimate.q_mvar = q_mvar
@@ -110,13 +136,17 @@ class PackEstimator:
     def project(self, horizon_s: float, dt: float = 5.0, p_mw: float | None = None) -> tuple[float, float]:
         """Roll the model forward. Returns ``(soc, peak temperature)``."""
         est = self.estimate
-        power = est.p_mw if p_mw is None else p_mw
+        setpoint = est.p_mw if p_mw is None else p_mw
         soc, temp = est.soc, est.temp_c
+        actual = self._p_actual_mw
         peak = temp
         steps = max(1, int(horizon_s / dt))
         for _ in range(steps):
-            soc = self.predict_soc(soc, power, dt)
-            temp = self.predict_temp(temp, power, est.q_mvar, dt, est.cooling_enabled)
+            target = self.deliverable_mw(setpoint, soc, temp)
+            step = self.model.slew_mw_s * dt
+            actual += _clamp(target - actual, -step, step)
+            soc = self.predict_soc(soc, actual, dt)
+            temp = self.predict_temp(temp, actual, est.q_mvar, dt, est.cooling_enabled)
             peak = max(peak, temp)
         return soc, peak
 
@@ -125,9 +155,10 @@ class PackEstimator:
         """Advance the estimate and test the report against it."""
         est = self.estimate
 
-        predicted_soc = self.predict_soc(est.soc, est.p_mw, dt)
+        delivered = self._advance_actual(dt, est.soc, est.temp_c)
+        predicted_soc = self.predict_soc(est.soc, delivered, dt)
         predicted_temp = self.predict_temp(
-            est.temp_c, est.p_mw, est.q_mvar, dt, est.cooling_enabled
+            est.temp_c, delivered, est.q_mvar, dt, est.cooling_enabled
         )
 
         self._variance += self.cfg.process_noise_soc**2
@@ -231,16 +262,20 @@ class SourceVoter:
         the first version of this did.
         """
         values = {src: observation.measurement(src) for src in MeasurementSource}
+        temps = [p.temp_c for p in observation.packs if p.online]
         values[MeasurementSource.TELEMETRY] = self._bus_to_poi(
-            values[MeasurementSource.TELEMETRY]
+            values[MeasurementSource.TELEMETRY], temps
         )
         return values
 
-    def _bus_to_poi(self, p_bus_mw: float) -> float:
+    def _bus_to_poi(self, p_bus_mw: float, temps_c: list[float] | None = None) -> float:
         m = self.model
         rated = max(m.poi_rating_mw, 1e-9)
         loss = m.transformer_loss_mw * (p_bus_mw / rated) ** 2 + m.transformer_noload_mw
-        return p_bus_mw - m.aux_base_mw - loss
+        aux = m.aux_base_mw
+        for temp in temps_c or []:
+            aux += m.aux_thermal_mw_per_c * max(0.0, temp - m.ambient_ref_c)
+        return p_bus_mw - aux - loss
 
     def vote(self, observation: SiteObservation) -> VoteResult:
         values = self._referred(observation)

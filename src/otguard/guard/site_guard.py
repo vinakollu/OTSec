@@ -135,6 +135,8 @@ class SiteGuard:
         rules: Sequence[SiteRule] | None = None,
         topology: SiteTopology | None = None,
         devices: Sequence[str] | None = None,
+        initial_soc: float | None = None,
+        initial_temp_c: float | None = None,
     ) -> None:
         self.config = config
         self.bess = config.bess
@@ -149,8 +151,12 @@ class SiteGuard:
                 device=device,
                 model=self.bess.guard.model,
                 energy=self.bess.guard.energy,
-                initial_soc=self.bess.pack.initial_soc,
-                initial_temp_c=self.bess.pack.ambient_c,
+                initial_soc=(
+                    self.bess.pack.initial_soc if initial_soc is None else initial_soc
+                ),
+                initial_temp_c=(
+                    self.bess.pack.ambient_c if initial_temp_c is None else initial_temp_c
+                ),
             )
             for device in device_ids
         }
@@ -167,10 +173,19 @@ class SiteGuard:
         self.sync_ok = True
 
         self._power_history: deque[tuple[float, float]] = deque(maxlen=_POWER_HISTORY)
+        # The trajectory of what has been *commanded*. B4 asks how fast the
+        # site is being asked to move, which is a question about the command
+        # stream; comparing a proposed set-point against measured POI power
+        # compares two different quantities separated by inverter slew, the
+        # transformer and the house load, and flags every honest ramp.
+        self._command_history: deque[tuple[float, float]] = deque(maxlen=_POWER_HISTORY)
         self._now = 0.0
         self._last_trip_t: dict[str, float] = {}
         self.lockout_directions: set[str] = set()
         self.trip_latched = False
+        # Standing alarms already surfaced, so supervision reports each once.
+        self._reported_energy_alarms: set[str] = set()
+        self._reported_source_alarm = False
 
         self.stats = SiteStats()
         self.verdicts: list[SiteVerdict] = []
@@ -202,6 +217,9 @@ class SiteGuard:
         self.bus_live = observation.bus_live
         self.fault_current_a = observation.fault_current_a
         self._power_history.append((observation.t, self.site_power_mw))
+        self._command_history.append(
+            (observation.t, sum(e.estimate.p_mw for e in self.estimators.values()))
+        )
 
         return self._supervise(observation)
 
@@ -215,6 +233,32 @@ class SiteGuard:
         curtail: dict[str, float] = {}
         restore_cooling: list[str] = []
         direction = ""
+
+        # --- standing integrity alarms ---
+        # B2 and B6 are detected continuously by the estimator and the voter,
+        # but until now they only reached a decision when a command happened to
+        # arrive. On a quiet site that is never: the dispatch controller writes
+        # on change, so after the morning ramp there may be no traffic for
+        # minutes, and a spoof detected at 60 s would go unreported until
+        # something unrelated was written. That is the same hole the tank
+        # version found — a command-time-only guard is defeated by sending one
+        # legal command and waiting — so a newly latched alarm raises an event
+        # on its own.
+        for device, est in self.estimators.items():
+            if est.estimate.integrity_alarm and device not in self._reported_energy_alarms:
+                self._reported_energy_alarms.add(device)
+                direction = direction or "integrity"
+                findings.append(
+                    RuleFinding("B2", "supervision", est.estimate.alarm_detail,
+                                margin=est.estimate.soc_cusum)
+                )
+        if self.voter.alarm is not None and not self._reported_source_alarm:
+            self._reported_source_alarm = True
+            direction = direction or "integrity"
+            findings.append(
+                RuleFinding("B6", "supervision", self.voter.alarm_detail,
+                            margin=self.voter.cusum.get(self.voter.alarm, 0.0))
+            )
 
         # --- POI excursion under the trusted measurement ---
         rating = self.bess.site.poi_rating_mw
@@ -318,6 +362,7 @@ class SiteGuard:
             lockout_directions=frozenset(self.lockout_directions),
             safety_trip_c=self.bess.guard.model.temp_trip_c,
             recent_power=tuple(self._power_history),
+            recent_command_mw=tuple(self._command_history),
         )
 
         findings: list[RuleFinding] = []
@@ -392,6 +437,8 @@ class SiteGuard:
         self.voter.acknowledge()
         for est in self.estimators.values():
             est.acknowledge()
+        self._reported_energy_alarms.clear()
+        self._reported_source_alarm = False
 
     def reset_log(self) -> None:
         self.verdicts.clear()
