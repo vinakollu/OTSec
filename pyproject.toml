@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "otguard"
+version = "0.1.0"
+description = "Physics-plausibility guard for OT/ICS command streams"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Venkata Sai Suhruth Inakollu" }]
+dependencies = [
+    "numpy>=1.24",
+    "matplotlib>=3.7",
+    "pymodbus>=3.6",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4"]
+
+[project.scripts]
+otguard-eval = "otguard.eval.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+filterwarnings = ["ignore::DeprecationWarning"]

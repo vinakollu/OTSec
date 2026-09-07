@@ -1,0 +1,131 @@
+# OTGuard default configuration
+#
+# Two independent parameter sets live here:
+#
+#   plant.*  describes the REAL process (used by the simulator only).
+#   guard.*  describes what the GUARD BELIEVES about the process.
+#
+# They are deliberately separate. The guard never gets to see plant.* — it only
+# has an engineer's nominal model, which is why guard.model is slightly wrong on
+# purpose (see `model_mismatch` in the evaluation). A guard that only works with
+# a perfect model would not survive contact with a real plant.
+
+plant:
+  # --- Tank geometry ---
+  area_m2: 1.0            # cross-sectional area
+  height_m: 2.0           # physical height; above this the tank overflows
+  initial_level_m: 0.50
+
+  # --- Actuators ---
+  pump_max_flow_m3s: 0.05   # inflow at 100 % pump command
+  valve_coeff: 0.05         # Q_out = valve_coeff * valve_frac * sqrt(level)
+  pump_slew_pct_s: 20.0     # VFD ramp rate: how fast the pump can actually move
+  valve_slew_pct_s: 25.0    # motor-operated valve full travel ~4 s
+
+  # --- Sensor ---
+  level_noise_std_m: 0.005  # 5 mm RMS noise on the level transmitter
+
+  # --- Integration ---
+  dt_s: 0.1
+
+# Physical safety envelope. Crossing these is the "damage" the guard exists to
+# prevent: overflow above, pump cavitation / dry running below.
+safety:
+  level_min_m: 0.20
+  level_max_m: 1.80
+
+guard:
+  # The guard's nominal model of the plant. Intentionally NOT identical to
+  # plant.* — a real engineer's datasheet model is always a little off.
+  model:
+    area_m2: 1.0
+    pump_max_flow_m3s: 0.052   # +4 % vs. truth
+    valve_coeff: 0.048         # -4 % vs. truth
+    pump_slew_pct_s: 20.0      # nominal actuator travel rates from the datasheet
+    valve_slew_pct_s: 25.0
+
+  # --- R1: static range / envelope ---
+  range:
+    pump_pct: [0.0, 100.0]
+    valve_pct: [0.0, 100.0]
+    setpoint_m: [0.30, 1.60]   # Operators may not command a setpoint into the
+                               # protective band, let alone outside the tank.
+                               # The ceiling sits below safety.level_max_m by
+                               # more than one reaction horizon of fill, so a
+                               # legitimate setpoint can never itself provoke a
+                               # supervision trip.
+
+  # --- R2: actuation dynamics (water hammer, command floods) ---
+  dynamics:
+    window_s: 3.0              # sliding window for both sub-checks
+    reversal_amplitude_pct: 25.0   # a direction change smaller than this is noise
+    max_reversals: 3           # >3 large reversals in 3 s is not a human operator
+    max_command_rate_hz: 10.0  # an HMI does not write 10+ commands/second
+
+  # --- R3: inertia-aware safety prediction ---
+  prediction:
+    horizon_s: 3.0             # how far ahead to integrate the held command
+    margin_m: 0.0              # extra conservatism on the safety envelope
+
+  # --- Continuous supervision (standing orders) ---
+  # Vetting commands as they arrive is not enough: an attacker can send one
+  # legal-looking command and simply wait for the tank to fill. So the guard
+  # also re-checks the *currently held* command against the envelope on every
+  # scan cycle, and can drive the actuators to a safe state before the process
+  # leaves it. The horizon is longer here than at command time because a
+  # standing order has to be caught early enough to still be correctable.
+  supervision:
+    enabled: true
+    horizon_s: 5.0
+    trip: true                 # on a predicted breach, force actuators safe
+    rearm_after_s: 10.0        # minimum gap between trips, so one event does
+                               # not produce a stream of duplicate alarms
+    latch_trip: true           # A trip the HMI can undo is not a protection:
+                               # a compromised operator station simply re-sends
+                               # the command on its next cycle. As on a real
+                               # safety instrumented system, the trip latches
+                               # and only self-limiting configurations are
+                               # accepted until an operator acknowledges.
+
+  # --- Degraded mode: how to behave once the sensor is untrusted ---
+  # Going open-loop preserves whatever estimate error had already accumulated
+  # when R4 finally latched, so lookahead alone still trips too late. Degraded
+  # mode therefore falls back on the one check that needs no level reading at
+  # all: the steady state implied by the commands themselves. Filling against a
+  # shut outlet settles at infinity whatever the transmitter claims, and while
+  # blind the guard will not run a configuration whose equilibrium sits outside
+  # the envelope.
+  degraded:
+    enabled: true
+    equilibrium_check: true
+
+  # --- R4: estimator/sensor consistency (false data injection, replay) ---
+  consistency:
+    # Q is deliberately small relative to R: this is a *detector*, not a
+    # tracker. A filter tuned to follow the transmitter closely (high gain)
+    # absorbs an injected bias within a couple of samples and the residual
+    # vanishes before the CUSUM can accumulate. Trusting the model more keeps
+    # the disagreement visible.
+    process_noise_std_m: 0.001  # Kalman Q  -> steady-state gain ~0.18
+    sensor_noise_std_m: 0.005   # Kalman R (the guard's assumption)
+    cusum_threshold: 30.0       # alarm when the CUSUM statistic exceeds this
+    cusum_slack: 1.0            # innovations below this many sigma are "free"
+    latch_alarm: true           # a sensor-integrity alarm stays up until an
+                                # operator acknowledges it, as on a real SIS
+    open_loop_on_alarm: true    # Once the transmitter is known to be lying,
+                                # stop correcting the estimate with it and dead
+                                # reckon from physics instead. This is what
+                                # keeps R3/supervision honest during a spoofing
+                                # attack rather than blinding it.
+
+  # Which rules block outright vs. only raise an alarm. In a real deployment an
+  # operator decides this; blocking a legitimate command is its own hazard.
+  enforcement:
+    R1_range: block
+    R2_dynamics: block
+    R3_prediction: block
+    R4_consistency: alarm      # a spoofed sensor does not make the *command*
+                               # illegal — it means you can no longer trust the
+                               # state, so you warn rather than blindly block.
+    R5_lockout: block          # after a latched trip, only self-limiting
+                               # configurations get through until acknowledged
