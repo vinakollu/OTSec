@@ -126,7 +126,7 @@ class PhysicsGuard:
         # would empty the tank it had just saved.
         self._last_trip_t: dict[str, float] = {}
         self.trip_latched = False
-        self.trip_direction: str | None = None
+        self.trip_directions: set[str] = set()
 
     # ------------------------------------------------------------------
     # Process feedback
@@ -247,7 +247,7 @@ class PhysicsGuard:
                 self.estimator.note_accepted(CommandKind.VALVE, action.valve_cmd_pct)
             if cfg.latch_trip:
                 self.trip_latched = True
-                self.trip_direction = direction
+                self.trip_directions.add(direction)
 
         event = SupervisionEvent(t=t, findings=[finding], action=action)
         self.supervision_events.append(event)
@@ -269,7 +269,7 @@ class PhysicsGuard:
             history=tuple(self._history),
             now=command.t,
             trip_latched=self.trip_latched,
-            trip_direction=self.trip_direction,
+            trip_directions=frozenset(self.trip_directions),
         )
 
         findings: list[RuleFinding] = []
@@ -332,7 +332,7 @@ class PhysicsGuard:
         is exactly the party you are trying to stop.
         """
         self.trip_latched = False
-        self.trip_direction = None
+        self.trip_directions.clear()
         self._supervision_direction = None
         self._last_trip_t.clear()
         self.estimator.acknowledge()

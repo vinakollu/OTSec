@@ -55,7 +55,7 @@ class GuardContext:
     history: Sequence[Command]  # accepted + attempted, newest last
     now: float
     trip_latched: bool = False
-    trip_direction: str | None = None  # "high" | "low"
+    trip_directions: frozenset[str] = frozenset()  # subset of {"high", "low"}
 
 
 class Rule(Protocol):
@@ -295,12 +295,17 @@ class LockoutRule:
     is undone. Cycling that way, the guard alarms forever while the tank fills
     anyway.
 
-    So while the trip is latched, a command to the pump or valve is admitted
-    only if the resulting pair has an *equilibrium* inside the safety envelope —
-    that is, only if the process would come to rest somewhere safe if the guard
-    were to lose sight of it entirely. Filling against a shut outlet settles at
-    infinity and is refused; a balanced pair that comes to rest mid-tank is
-    fine, so an operator can still recover the plant.
+    So while the trip is latched, a command to the pump or valve is refused if
+    the resulting pair would come to rest *past the limit that tripped*.
+
+    The direction matters, and getting it wrong makes the rule dangerous. A
+    blanket "equilibrium must be inside the envelope" test looks tidier but
+    forbids draining the tank after an overflow trip — pump shut against an open
+    outlet settles at empty, so every recovery action a plant operator would
+    reach for is refused, and the guard traps the process in the state it just
+    rescued it from. Only the aggravating direction is locked out: after a high
+    trip the guard refuses configurations that fill without bound and permits
+    every one that lowers the level.
 
     The test deliberately uses only the commands, never the level reading, which
     is what lets it hold up when the transmitter is the thing under attack. It
@@ -312,7 +317,7 @@ class LockoutRule:
     name = "lockout"
 
     def check(self, command: Command, ctx: GuardContext) -> RuleFinding | None:
-        if not ctx.trip_latched:
+        if not ctx.trip_latched or not ctx.trip_directions:
             return None
         if command.kind not in (CommandKind.PUMP, CommandKind.VALVE):
             return None
@@ -325,18 +330,24 @@ class LockoutRule:
         h_eq = ctx.estimator.equilibrium_level(**kwargs)
         high = ctx.safety.level_max_m
         low = ctx.safety.level_min_m
-        if low <= h_eq <= high:
+
+        if "high" in ctx.trip_directions and h_eq > high:
+            settles = "infinity" if math.isinf(h_eq) else f"{h_eq:.2f} m"
+            limit, margin, sense = f"{high:.2f}", h_eq - high, "overflow"
+        elif "low" in ctx.trip_directions and h_eq < low:
+            settles = f"{h_eq:.2f} m"
+            limit, margin, sense = f"{low:.2f}", low - h_eq, "dry-out"
+        else:
             return None
 
-        settles = "infinity" if math.isinf(h_eq) else f"{h_eq:.2f} m"
         return RuleFinding(
             self.rule_id,
             self.name,
-            f"trip latched ({ctx.trip_direction}): {command.kind.value}="
-            f"{command.value:g}{command.kind.unit} would settle at {settles}, "
-            f"outside [{low:.2f}, {high:.2f}] m — only self-limiting "
-            f"configurations are accepted until the trip is acknowledged",
-            margin=(h_eq - high) if h_eq > high else (low - h_eq),
+            f"{sense} trip latched: {command.kind.value}="
+            f"{command.value:g}{command.kind.unit} would settle at {settles} "
+            f"(limit {limit} m) — configurations that re-establish the tripped "
+            f"condition are refused until the trip is acknowledged",
+            margin=margin,
         )
 
 
