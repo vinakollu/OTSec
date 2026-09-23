@@ -154,6 +154,88 @@ Two test the sender rather than the receiver. `historian_write` has a read-only
 device start issuing commands. `unknown_source` has a device that is not in the
 inventory write to the controller.
 
+## Results
+
+Sixty sender and receiver pairs, each run with the guard enforcing and again
+with it watching but powerless.
+
+| Metric | Result |
+| --- | --- |
+| Pairs run | 60 |
+| Attacks the guard objected to | 60 of 60 |
+| Pairs that damaged the plant unguarded | 38 |
+| Of those, damage prevented | 38 of 38 |
+| Ordinary writes refused | 0 of 336 |
+| Added round trip | p50 105 us, p95 222 us, p99 353 us over 14723 frames |
+
+The ordinary-traffic run is the one to read first. Every benign sender runs at
+once against each receiver, including the peer controller writing twice a
+second for the whole episode, and nothing is refused. That is what the
+per-source write budget bought: before it, a single pooled threshold either
+called the peer controller a permanent flood or let a script through.
+
+### What the physics rules do on their own
+
+The wire policy runs before the rules, so it takes credit for everything it
+stops first. Turning it off says how much of that the rules would have caught
+anyway.
+
+| | Pairs |
+| --- | --- |
+| Stopped at the wire with the policy on | 18 |
+| Of those, a physics rule catches anyway | 14 |
+| Of those, the policy is load-bearing | 4 |
+| Undetected with the policy off | 0 |
+| Damaged with the policy off | 0 |
+
+The rules alone catch all sixty pairs and prevent all thirty-eight that did
+damage. The four the policy genuinely carries are the mask writes, and they are
+not a physics failure: the value a mask write produces is not in the frame, so
+there is nothing for a rule to judge. Refusing them is the only honest answer,
+and it is the one case where the guard stops an attack without understanding
+its physics.
+
+That result cuts against the wire policy rather than for it. An access check
+that stops an attack is worth having, but on this suite it is nearly always
+stopping something the physics would have stopped a moment later.
+
+### An ablation that was not one
+
+The first version of this table reported eleven pairs undetected and eight
+damaged with the policy off, which made the policy look essential. It was a bug
+in the proxy, not a result. A defect the policy permitted returned early from
+the inspection loop instead of continuing, so with the policy disabled the
+physics rules never ran either. "Policy off" was measuring a guard with no
+rules at all.
+
+It is recorded here because it is the second time in this project an ablation
+has silently measured the wrong thing, after the storage site's cross-source
+voting flag gated only its reporting rule. Both had the same shape: a switch
+meant to disable one mechanism disabled the thing it was being compared
+against. Two regression tests pin this one.
+
+### Where the numbers are weaker than they look
+
+Sixty of sixty is not a generalisation claim. The attacks and the rules were
+written by the same person, and the suite is built from what this design was
+expected to handle.
+
+Three specific caveats matter more than the headline.
+
+Water hammer is detected on all twelve of its pairs and damages the plant on
+none of them, because this tank models level and not pressure. Those pairs are
+evidence about detection and no evidence at all about damage.
+
+The twelve pairs where the peer controller is the attacker are stopped by
+source scoping before any physics runs, because the peer controller is
+configured to write the valve and the attacks write the pump. With the policy
+off the rules catch them, so the physics is doing the work, but the default
+configuration never exercises it.
+
+The RTU's own interlock means eight pairs do no damage unguarded whatever the
+guard does. They are reported as having no damage to prevent rather than
+counted as saves.
+
 ## Reproducing
 
 ```bash
