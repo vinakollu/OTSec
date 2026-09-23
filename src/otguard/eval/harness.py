@@ -165,12 +165,11 @@ def run_scenario(scenario: Scenario, config: Config, enforce: bool = True) -> Ru
             due.extend(controller.update(t, reported))
 
         for scheduled in due:
-            command = Command(
-                t=t,
-                kind=scheduled.kind,
-                value=scheduled.value,
-                source="attacker" if scheduled.malicious else "hmi",
-            )
+            # Every write in the in-process suite arrives from the operator
+            # station, compromised or not. The malicious flag is ground truth
+            # for scoring and must not reach the guard in any form, including
+            # as a source label a per-source rule could key on.
+            command = Command(t=t, kind=scheduled.kind, value=scheduled.value, source="hmi")
             verdict = guard.check(command)
             result.verdicts.append((verdict, scheduled.malicious))
             if verdict.flagged:

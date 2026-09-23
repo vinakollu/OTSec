@@ -127,8 +127,17 @@ class DynamicsRule:
         pipe long before any level-based rule notices.
 
     ``flood``
-        Sustained write rate far above what an HMI produces. A human clicks; a
-        script hammers.
+        Sustained write rate far above what the sending device produces. What
+        counts as far above depends on the device: an operator clicks a few
+        times a minute, while a peer controller closing a loop writes every
+        scan. So the rate is counted per source against a budget for that
+        source's class (``dynamics.source_rate_hz``). This half of R2 is about
+        traffic, not physics, which is why it is the half that needs to know
+        who is talking.
+
+    The two halves deliberately disagree on sources. Reversals are counted
+    across every writer, because two compromised devices taking turns on a
+    valve hammer the pipe exactly as hard as one.
     """
 
     rule_id = "R2"
@@ -140,14 +149,20 @@ class DynamicsRule:
         recent = [c for c in ctx.history if c.t >= window_start]
 
         # --- flood ---
-        rate = (len(recent) + 1) / cfg.window_s
-        if rate > cfg.max_command_rate_hz:
+        if cfg.per_source:
+            sent = [c for c in recent if c.source == command.source]
+            who = f" from {command.source}"
+        else:
+            sent, who = recent, ""
+        budget = cfg.rate_budget(command.source)
+        rate = (len(sent) + 1) / cfg.window_s
+        if rate > budget:
             return RuleFinding(
                 self.rule_id,
                 self.name,
-                f"command flood: {rate:.1f} writes/s over {cfg.window_s:g}s window "
-                f"exceeds {cfg.max_command_rate_hz:g}/s",
-                margin=rate - cfg.max_command_rate_hz,
+                f"command flood{who}: {rate:.1f} writes/s over {cfg.window_s:g}s window "
+                f"exceeds {budget:g}/s",
+                margin=rate - budget,
             )
 
         # --- reversals (per actuator) ---

@@ -68,6 +68,18 @@ class DynamicsConfig:
     reversal_amplitude_pct: float = 25.0
     max_reversals: int = 3
     max_command_rate_hz: float = 10.0
+    # The flood check counts each sending device separately against the budget
+    # for its class. Reversals are never split by source: a pipe feels water
+    # hammer whoever is slamming the valve.
+    per_source: bool = True
+    source_rate_hz: Mapping[str, float] = field(
+        default_factory=lambda: {"peer_controller": 15.0}
+    )
+
+    def rate_budget(self, source: str) -> float:
+        if not self.per_source:
+            return self.max_command_rate_hz
+        return float(self.source_rate_hz.get(source, self.max_command_rate_hz))
 
 
 @dataclass(frozen=True)

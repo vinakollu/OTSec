@@ -61,6 +61,11 @@ guard:
     reversal_amplitude_pct: 25.0   # a direction change smaller than this is noise
     max_reversals: 3           # >3 large reversals in 3 s is not a human operator
     max_command_rate_hz: 10.0  # an HMI does not write 10+ commands/second
+    per_source: true           # count write rate per sending device, not pooled
+    source_rate_hz:            # budget by device class; unlisted classes get
+      peer_controller: 15.0    # max_command_rate_hz. A peer PLC closing a
+                               # loop writes every 100 ms scan, which a single
+                               # pooled HMI-sized budget reads as a flood.
 
   # --- R3: inertia-aware safety prediction ---
   prediction:
