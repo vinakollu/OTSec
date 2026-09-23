@@ -72,13 +72,25 @@ class WaterTank:
         self.safety = safety
         self._rng = np.random.default_rng(seed)
         self.state = PlantState(level_m=config.initial_level_m)
+        # What the installed actuators can physically do. They start at the
+        # configured nominal values; a field device that owns an actuator
+        # (a drive with its own ramp and speed limit, a contactor that starts
+        # instantly) overrides them, which is exactly how a real plant's
+        # dynamics come to differ from the datasheet the guard was built from.
+        self.pump_limit_pct = 100.0
+        self.pump_slew_pct_s = config.pump_slew_pct_s
+        self.valve_slew_pct_s = config.valve_slew_pct_s
 
     # ------------------------------------------------------------------
     # Actuation
     # ------------------------------------------------------------------
     def set_pump(self, pct: float) -> None:
-        """Accept a pump command (0-100 %). The actuator still has to travel."""
-        self.state.pump_cmd_pct = _clamp(pct, 0.0, 100.0)
+        """Accept a pump command. The actuator still has to travel.
+
+        Clamped to ``pump_limit_pct``, which is 100 % unless a drive has been
+        configured to run the motor above its nominal speed.
+        """
+        self.state.pump_cmd_pct = _clamp(pct, 0.0, self.pump_limit_pct)
 
     def set_valve(self, pct: float) -> None:
         """Accept a valve command (0-100 %)."""
@@ -94,8 +106,8 @@ class WaterTank:
         s = self.state
 
         # Actuators slew toward their commanded positions at a finite rate.
-        s.pump_pos_pct = _slew(s.pump_pos_pct, s.pump_cmd_pct, cfg.pump_slew_pct_s * dt)
-        s.valve_pos_pct = _slew(s.valve_pos_pct, s.valve_cmd_pct, cfg.valve_slew_pct_s * dt)
+        s.pump_pos_pct = _slew(s.pump_pos_pct, s.pump_cmd_pct, self.pump_slew_pct_s * dt)
+        s.valve_pos_pct = _slew(s.valve_pos_pct, s.valve_cmd_pct, self.valve_slew_pct_s * dt)
 
         s.inflow_m3s = cfg.pump_max_flow_m3s * (s.pump_pos_pct / 100.0)
         s.outflow_m3s = cfg.valve_coeff * (s.valve_pos_pct / 100.0) * math.sqrt(max(s.level_m, 0.0))

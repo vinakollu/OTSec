@@ -37,12 +37,9 @@ class ScheduledCommand:
     note: str = ""
 
     def to_command(self) -> Command:
-        return Command(
-            t=self.t,
-            kind=self.kind,
-            value=self.value,
-            source="attacker" if self.malicious else "hmi",
-        )
+        # The label stays here; the guard only ever learns which device sent a
+        # write, and in this suite that is always the operator station.
+        return Command(t=self.t, kind=self.kind, value=self.value, source="hmi")
 
 
 class Controller(Protocol):
