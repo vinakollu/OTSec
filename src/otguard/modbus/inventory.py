@@ -104,6 +104,7 @@ class WireDecision(str, Enum):
 
     UNKNOWN_FUNCTION = "unknown_function"
     UNPARSEABLE = "unparseable"
+    UNJUDGEABLE_WRITE = "unjudgeable_write"
     UNMAPPED_POINT = "unmapped_point"
     PARAMETER_WRITE = "parameter_write"
     UNAUTHORISED_SOURCE = "unauthorised_source"
@@ -132,6 +133,10 @@ class WirePolicy:
         return {
             WireDecision.UNKNOWN_FUNCTION: not self.refuse_unknown_functions,
             WireDecision.UNPARSEABLE: False,
+            # A frame whose effect cannot be determined from the frame is never
+            # forwarded, whatever the policy says. Permitting it would mean
+            # vouching for a value the guard has not seen.
+            WireDecision.UNJUDGEABLE_WRITE: False,
             WireDecision.UNMAPPED_POINT: not self.refuse_unmapped_points,
             WireDecision.PARAMETER_WRITE: not self.refuse_parameter_writes,
             WireDecision.UNAUTHORISED_SOURCE: self.allow_unknown_sources,

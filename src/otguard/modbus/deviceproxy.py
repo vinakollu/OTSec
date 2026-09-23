@@ -208,34 +208,49 @@ class DeviceGuardProxy:
         if request.is_masked:
             point = self.map.lookup(frame.unit_id, request.space, request.address)
             name = point.name if point else f"{request.space.value}[{request.address}]"
-            return self._refuse(record, WireDecision.UNMAPPED_POINT,
+            return self._refuse(record, WireDecision.UNJUDGEABLE_WRITE,
                                 f"mask write to {name}: the resulting value depends on "
                                 f"the register's current contents and cannot be judged "
                                 f"from the frame")
 
+        # Each point is examined in turn. A defect the policy refuses ends the
+        # frame; a defect the policy permits must not also skip the rules,
+        # which is the difference between an ablation and switching the guard
+        # off. An out-of-scope write in particular is still a real actuator
+        # command, and is judged on its physics once the access check is not
+        # the thing stopping it.
         commands: list[tuple[Point, Command]] = []
         for address, raw in request.points():
             point = self.map.lookup(frame.unit_id, request.space, address)
             if point is None:
-                return self._refuse(
+                self._refuse(
                     record, WireDecision.UNMAPPED_POINT,
                     f"write to unit {frame.unit_id} "
                     f"{request.space.value}[{address}], which the device map "
                     f"does not describe",
                 )
+                if record.wire_reason is not None:
+                    return record
+                continue  # permitted, but there is no physics to check it against
             if point.role is PointRole.PARAMETER:
-                return self._refuse(
+                self._refuse(
                     record, WireDecision.PARAMETER_WRITE,
                     f"write to {point.name}: changing an actuator's configuration "
                     f"invalidates the model the physics rules reason about",
                 )
+                if record.wire_reason is not None:
+                    return record
+                continue  # permitted; a parameter moves no actuator directly
             if point.role is PointRole.PASSTHROUGH:
                 continue
             if not source.may_write(point.name):
-                return self._refuse(
+                self._refuse(
                     record, WireDecision.UNAUTHORISED_POINT,
                     f"{source.name} is not configured to write {point.name}",
                 )
+                if record.wire_reason is not None:
+                    return record
+                # Permitted: fall through, because the rules can still judge it.
             assert point.kind is not None
             commands.append(
                 (point, Command(t=now, kind=point.kind,
