@@ -10,16 +10,18 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
+from . import figstyle  # noqa: E402
 from .site_harness import SiteRunResult  # noqa: E402
 from .site_metrics import SiteReport  # noqa: E402
 from .site_sweeps import SweepPoint  # noqa: E402
 
 # One colour per measurement source, used consistently across every figure so
-# that the reader learns the mapping once.
+# that the reader learns the mapping once. These are the project's categorical
+# slots, so the tank figures and the site figures agree on what blue means.
 SOURCE_COLOURS = {
-    "poi_meter": "#c2410c",
-    "telemetry": "#1d4ed8",
-    "relay": "#047857",
+    "poi_meter": figstyle.SERIES["sensor"],
+    "telemetry": figstyle.SERIES["estimate"],
+    "relay": figstyle.SERIES["third"],
 }
 
 
@@ -161,94 +163,177 @@ def format_sweep_soc(held: list[SweepPoint], transient: list[SweepPoint]) -> str
 
 
 def _style(ax, title: str, xlabel: str, ylabel: str) -> None:
-    ax.set_title(title, fontsize=11, loc="left")
-    ax.set_xlabel(xlabel, fontsize=9)
-    ax.set_ylabel(ylabel, fontsize=9)
-    ax.grid(True, alpha=0.25, linewidth=0.6)
-    ax.tick_params(labelsize=8)
-    for side in ("top", "right"):
-        ax.spines[side].set_visible(False)
+    if title:
+        ax.set_title(title, fontsize=figstyle.TYPE.subtitle, loc="left",
+                     color=figstyle.INK, pad=6)
+    figstyle.style(ax, xlabel=xlabel, ylabel=ylabel)
 
 
 def plot_scenario(run: SiteRunResult, path: Path) -> None:
-    """Three stacked panels: the three power measurements, SoC, temperature."""
+    """Three stacked panels: the three power measurements, charge, temperature."""
     if not run.samples:
         return
-    t = [s.t for s in run.samples]
-    fig, axes = plt.subplots(3, 1, figsize=(9, 8), sharex=True)
+    figstyle.apply()
 
+    t = [s.t for s in run.samples]
+    fig, axes = plt.subplots(3, 1, figsize=(9.5, 7.4), sharex=True,
+                             height_ratios=[2.2, 1, 1],
+                             gridspec_kw={"hspace": 0.28})
+
+    # --- the three measurements of the same power ---
     ax = axes[0]
-    ax.plot(t, [s.p_poi_true_mw for s in run.samples], color="#111827",
-            linewidth=1.6, label="true POI power")
+    ax.plot(t, [s.p_poi_true_mw for s in run.samples],
+            color=figstyle.TRUTH, linewidth=2.0, zorder=5)
     ax.plot(t, [s.p_poi_reported_mw for s in run.samples],
-            color=SOURCE_COLOURS["poi_meter"], linewidth=1.0, linestyle="--",
-            label="revenue meter")
+            color=SOURCE_COLOURS["poi_meter"], linewidth=1.3,
+            linestyle=(0, (1.5, 1.5)), zorder=4)
     ax.plot(t, [s.p_relay_mw for s in run.samples],
-            color=SOURCE_COLOURS["relay"], linewidth=1.0, linestyle=":", label="relay CT")
+            color=SOURCE_COLOURS["relay"], linewidth=1.2,
+            linestyle=(0, (4, 2)), zorder=3)
     ax.plot(t, [s.p_telemetry_mw for s in run.samples],
-            color=SOURCE_COLOURS["telemetry"], linewidth=1.0, alpha=0.7,
-            label="telemetry sum (LV bus)")
+            color=SOURCE_COLOURS["telemetry"], linewidth=1.2, alpha=0.85, zorder=3)
+    _style(ax, "Site power, as each instrument sees it", "", "MW")
+    figstyle.direct_labels(ax, [
+        (run.samples[-1].p_poi_true_mw, "true", figstyle.TRUTH),
+        (run.samples[-1].p_poi_reported_mw, "revenue meter", SOURCE_COLOURS["poi_meter"]),
+        (run.samples[-1].p_relay_mw, "relay CT", SOURCE_COLOURS["relay"]),
+        (run.samples[-1].p_telemetry_mw, "telemetry sum", SOURCE_COLOURS["telemetry"]),
+    ])
     if run.first_detection_t is not None:
-        ax.axvline(run.first_detection_t, color="#b91c1c", linewidth=1.0)
-        ax.annotate("first objection", (run.first_detection_t, ax.get_ylim()[1]),
-                    fontsize=8, color="#b91c1c", ha="left", va="top",
-                    xytext=(4, -4), textcoords="offset points")
-    _style(ax, f"{run.scenario.name} — site power", "", "MW")
-    ax.legend(fontsize=7, frameon=False, ncol=2)
+        ax.axvline(run.first_detection_t, color=figstyle.STATUS["danger"],
+                   linewidth=1.0, alpha=0.7, zorder=2)
+        # Inside the axes, not above them: the panel title already owns the
+        # strip of space directly over the frame.
+        ax.annotate("guard objects", xy=(run.first_detection_t, 0.97),
+                    xycoords=("data", "axes fraction"),
+                    xytext=(4, 0), textcoords="offset points",
+                    fontsize=figstyle.TYPE.note, color=figstyle.STATUS["danger"],
+                    ha="left", va="top")
 
     ax = axes[1]
-    ax.plot(t, [s.min_soc * 100 for s in run.samples], color="#1d4ed8", linewidth=1.4)
+    ax.plot(t, [s.min_soc * 100 for s in run.samples],
+            color=figstyle.SERIES["estimate"], linewidth=1.6)
     _style(ax, "Lowest state of charge in the fleet", "", "%")
 
     ax = axes[2]
-    ax.plot(t, [s.max_temp_c for s in run.samples], color="#c2410c", linewidth=1.4)
-    _style(ax, "Hottest unit", "time (s)", "deg C")
+    temps = [s.max_temp_c for s in run.samples]
+    ax.plot(t, temps, color=figstyle.SERIES["sensor"], linewidth=1.6)
+    _style(ax, "Hottest unit", "time (s)", "\u00b0C")
 
-    fig.tight_layout()
-    fig.savefig(path, dpi=130)
+    figstyle.titles(fig, run.scenario.name, run.scenario.description)
+    fig.savefig(path)
     plt.close(fig)
 
 
-def plot_bias_sweep(points: list[SweepPoint], path: Path) -> None:
-    """Displacement at detection against ramp rate — the headline figure."""
+def plot_bias_sweep(points: list[SweepPoint], path: Path,
+                    control: list[SweepPoint] | None = None) -> None:
+    """How far a biased meter gets before the vote objects.
+
+    The previous version of this figure carried the caption "flat across two
+    orders of magnitude" over a curve that climbs from 262 to 725 kW, which is
+    a 2.8-fold rise and visibly not flat. The claim it was reaching for is
+    about the *ratio*: the attacker's rate changes by 250x and the distance
+    they achieve changes by 2.8x, so the vote bounds displacement rather than
+    speed. That is a comparison between two spans, so the figure now draws
+    both spans instead of asserting one in a footnote.
+    """
     detected = [p for p in points if p.detected]
     if not detected:
         return
-    fig, ax = plt.subplots(figsize=(8, 4.5))
-    ax.semilogx(
-        [p.parameter * 1000 for p in detected],
-        [p.displacement_at_detection * 1000 for p in detected],
-        marker="o", color="#c2410c", linewidth=1.6, markersize=5,
+    figstyle.apply()
+
+    rates = [p.parameter * 1000 for p in detected]
+    bias = [p.displacement_at_detection * 1000 for p in detected]
+    rate_ratio = max(rates) / min(rates)
+    bias_ratio = max(bias) / min(bias)
+
+    fig, ax = plt.subplots(figsize=(9.0, 4.8))
+    ax.semilogx(rates, bias, marker="o", color=figstyle.SERIES["sensor"],
+                linewidth=2.0, markersize=6, zorder=4)
+
+    # The bound itself, drawn as the band the whole curve lives inside.
+    ax.axhspan(min(bias), max(bias), color=figstyle.SERIES["sensor"],
+               alpha=0.07, zorder=0, lw=0)
+    for edge in (min(bias), max(bias)):
+        ax.axhline(edge, color=figstyle.SERIES["sensor"], lw=0.8,
+                   alpha=0.45, zorder=1)
+
+    ax.set_ylim(0, max(bias) * 1.32)
+    _style(ax, "", "meter bias ramp rate (mW/s, log scale)", "bias at detection (kW)")
+
+    figstyle.callout(
+        ax, (rates[len(rates) // 2], max(bias)),
+        f"every attack is caught inside {min(bias):.0f}\u2013{max(bias):.0f} kW",
+        offset=(-10, 34), colour=figstyle.SERIES["sensor"],
     )
-    _style(
-        ax,
-        "Bias accumulated before the vote objects",
-        "meter bias ramp rate (mW/s, log scale)",
-        "bias at detection (kW)",
-    )
-    ax.set_ylim(bottom=0)
     ax.annotate(
-        "flat across two orders of magnitude:\nvoting bounds displacement, not rate",
-        xy=(0.5, 0.15), xycoords="axes fraction", fontsize=8, color="#374151",
+        f"rate varies {rate_ratio:.0f}\u00d7   \u2192   displacement varies {bias_ratio:.1f}\u00d7",
+        xy=(0.02, 0.06), xycoords="axes fraction",
+        fontsize=figstyle.TYPE.note, color=figstyle.INK_2, family=figstyle.MONO,
     )
-    fig.tight_layout()
-    fig.savefig(path, dpi=130)
+
+    if control:
+        missed = [p for p in control if not p.detected]
+        if missed:
+            ax.annotate(
+                f"with voting disabled the same attack is never detected "
+                f"({len(missed)} of {len(control)} rates tried)",
+                xy=(0.02, 0.155), xycoords="axes fraction",
+                fontsize=figstyle.TYPE.note, color=figstyle.STATUS["danger"],
+            )
+
+    figstyle.titles(
+        fig,
+        "Cross-source voting bounds how far a meter can drift",
+        "Bias accumulated by the time three independent measurements disagree "
+        "enough to object.",
+    )
+    fig.savefig(path)
     plt.close(fig)
 
 
 def plot_creep_sweep(points: list[SweepPoint], path: Path) -> None:
-    fig, ax = plt.subplots(figsize=(8, 4.5))
-    colours = ["#b91c1c" if not p.detected else "#1d4ed8" for p in points]
-    ax.bar([f"{p.parameter:g}" for p in points],
-           [p.peak_excursion for p in points], color=colours, width=0.6)
-    _style(
-        ax,
-        "How far over the export limit a creeping attack gets (red = never detected)",
-        "step size (MW per unit per 20 s)",
-        "peak MW over export limit",
+    """The escape hatch in B3's incremental test, with the sizes named."""
+    figstyle.apply()
+    fig, ax = plt.subplots(figsize=(9.0, 4.6))
+
+    labels = [f"{p.parameter:g}" for p in points]
+    peaks = [p.peak_excursion for p in points]
+    colours = [figstyle.STATUS["danger"] if not p.detected else figstyle.SERIES["estimate"]
+               for p in points]
+    ax.bar(labels, peaks, color=colours, width=0.62, zorder=3)
+
+    for label, peak, point in zip(labels, peaks, points):
+        figstyle.value(ax, label, peak, f"{peak:.2f}",
+                       colour=figstyle.STATUS["danger"] if not point.detected
+                       else figstyle.INK_2)
+    ax.set_ylim(0, max(peaks) * 1.22 if max(peaks) else 1.0)
+    _style(ax, "", "step size (MW per unit per 20 s)", "peak MW over the export limit")
+
+    # A two-entry key, each dot in its own colour. A single-colour footnote
+    # cannot carry a colour key, which is what the previous line tried to do.
+    for i, (colour, text) in enumerate((
+        (figstyle.STATUS["danger"], "never detected"),
+        (figstyle.SERIES["estimate"], "detected"),
+    )):
+        ax.annotate(f"\u25cf  {text}", xy=(0.0 + i * 0.16, 1.02),
+                    xycoords="axes fraction", fontsize=figstyle.TYPE.note,
+                    color=colour, ha="left", va="bottom")
+
+    worst = [p for p in points if not p.detected and p.peak_excursion > 0.1]
+    if worst:
+        figstyle.footnote(
+            fig,
+            f"the worst undetected case leaves the site "
+            f"{max(p.peak_excursion for p in worst):.2f} MW over its export limit",
+        )
+    figstyle.titles(
+        fig,
+        "A slow enough ramp walks past the incremental test",
+        "B3 objects only when a command makes an existing excursion worse, which "
+        "is what stops it blocking a recovery.",
     )
-    fig.tight_layout()
-    fig.savefig(path, dpi=130)
+    fig.savefig(path)
     plt.close(fig)
 
 
