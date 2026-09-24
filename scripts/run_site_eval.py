@@ -115,7 +115,7 @@ def main() -> int:
         if not args.no_figures:
             plots = args.out / "plots"
             plots.mkdir(parents=True, exist_ok=True)
-            plot_bias_sweep(bias, plots / "site_bias_sweep.png")
+            plot_bias_sweep(bias, plots / "site_bias_sweep.png", control=control)
             plot_creep_sweep(creep, plots / "site_creep_sweep.png")
 
     write_report(

@@ -15,6 +15,13 @@ from pathlib import Path
 from .harness import RunResult
 from .metrics import Report
 
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # noqa: E402
+
+from . import figstyle  # noqa: E402
+
 _BAR = "=" * 78
 
 
@@ -91,116 +98,274 @@ def plot_run(
     unguarded: RunResult | None = None,
     cusum_threshold: float = 30.0,
 ) -> Path:
-    """Draw one scenario's level trace, sensor view, and guard interventions."""
-    import matplotlib
+    """One scenario: what the tank did, what the guard was told, what it did.
 
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
+    The detector panel is drawn only when the detector actually moves. On most
+    scenarios the CUSUM sits in a noise band two orders of magnitude below its
+    threshold, and a panel showing that is a panel saying nothing at the same
+    size as the panel saying everything.
+    """
+    figstyle.apply()
 
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
     t = [s.t for s in run.samples]
-    fig, (ax, ax2) = plt.subplots(
-        2, 1, figsize=(10, 6.5), sharex=True, height_ratios=[3, 1]
-    )
-
-    # --- level traces ---
-    ax.plot(t, [s.true_level_m for s in run.samples], label="true level", lw=2, color="#1f77b4")
+    true = [s.true_level_m for s in run.samples]
     reported = [s.reported_level_m for s in run.samples]
-    if any(abs(a - b.true_level_m) > 1e-6 for a, b in zip(reported, run.samples)):
-        ax.plot(t, reported, label="reported to HMI", lw=1.4, ls="--", color="#d62728")
-    ax.plot(
-        t,
-        [s.estimated_level_m for s in run.samples],
-        label="guard estimate",
-        lw=1.2,
-        ls=":",
-        color="#2ca02c",
-    )
-    if unguarded is not None:
-        ax.plot(
-            [s.t for s in unguarded.samples],
-            [s.true_level_m for s in unguarded.samples],
-            label="true level, guard disabled",
-            lw=1.4,
-            ls="-.",
-            color="#7f7f7f",
-            alpha=0.85,
+    estimate = [s.estimated_level_m for s in run.samples]
+    cusum = [s.cusum for s in run.samples]
+
+    # Whether the operator is being lied to is a property of the scenario, not
+    # something to infer from the trace: the transmitter has millimetres of
+    # noise on it, so any tolerance small enough to catch a real bias also
+    # catches ordinary noise and labels every honest run as spoofed.
+    spoofed = run.scenario.sensor_attack is not None
+    show_detector = max(cusum, default=0.0) > cusum_threshold * 0.25
+
+    if show_detector:
+        fig, (ax, ax2) = plt.subplots(
+            2, 1, figsize=(9.5, 5.6), sharex=True, height_ratios=[3.2, 1],
+            gridspec_kw={"hspace": 0.18},
         )
+    else:
+        fig, ax = plt.subplots(figsize=(9.5, 4.4))
+        ax2 = None
 
-    ax.axhline(safety.level_max_m, color="k", ls="--", lw=1, alpha=0.6)
-    ax.axhline(safety.level_min_m, color="k", ls="--", lw=1, alpha=0.6)
-    ax.text(t[0], safety.level_max_m, " overflow limit", va="bottom", fontsize=8, alpha=0.7)
-    ax.text(t[0], safety.level_min_m, " dry-out limit", va="top", fontsize=8, alpha=0.7)
+    # --- the process ---
+    if unguarded is not None:
+        ax.plot([s.t for s in unguarded.samples],
+                [s.true_level_m for s in unguarded.samples],
+                lw=1.5, ls=(0, (5, 3)), color=figstyle.COUNTERFACTUAL, zorder=2)
+    ax.plot(t, true, lw=2.0, color=figstyle.TRUTH, zorder=5)
+    if spoofed:
+        ax.plot(t, reported, lw=1.4, ls=(0, (1.5, 1.5)),
+                color=figstyle.SERIES["sensor"], zorder=4)
+    ax.plot(t, estimate, lw=1.2, color=figstyle.SERIES["estimate"], alpha=0.9, zorder=3)
 
+    # Fit the axis to what happened, and admit a safety limit only when the
+    # process came near it. Reserving room for a dry-out limit the level never
+    # approached spends half the panel on empty space and flattens the part of
+    # the trace the figure exists to show.
+    traces = [*true, *estimate]
+    if unguarded is not None:
+        traces += [s.true_level_m for s in unguarded.samples]
+    lo, hi = min(traces), max(traces)
+    reach = max(hi - lo, 0.1) * 0.4
+    show_high = hi + reach >= safety.level_max_m
+    show_low = lo - reach <= safety.level_min_m
+    if show_high:
+        hi = max(hi, safety.level_max_m)
+    if show_low:
+        lo = min(lo, safety.level_min_m)
+    pad = max((hi - lo) * 0.16, 0.05)
+    ax.set_ylim(lo - pad, hi + pad)
+
+    if show_high:
+        figstyle.danger_band(ax, safety.level_max_m, above=True, label="overflow")
+    if show_low:
+        figstyle.danger_band(ax, safety.level_min_m, above=False, label="dry-out")
+
+    # An attack window that covers the whole episode is not a window. When the
+    # attack runs to the end, mark where it starts instead of tinting the page.
     if run.scenario.attack_window is not None:
         start, end = run.scenario.attack_window
-        ax.axvspan(start, min(end, t[-1]), color="#d62728", alpha=0.07, label="attack window")
+        end = min(end, t[-1])
+        covers_everything = (end - start) > 0.7 * (t[-1] - t[0])
+        if covers_everything:
+            ax.axvline(start, color=figstyle.STATUS["danger"], lw=0.9, alpha=0.45)
+            ax.annotate("attack begins", xy=(start, 1.0),
+                        xycoords=("data", "axes fraction"),
+                        xytext=(4, 4), textcoords="offset points",
+                        ha="left", va="bottom", fontsize=figstyle.TYPE.note,
+                        color=figstyle.STATUS["danger"])
+        else:
+            figstyle.span(ax, start, end, label="attack", alpha=0.07)
 
-    for verdict, _ in run.verdicts:
-        if not verdict.allowed:
-            ax.axvline(verdict.command.t, color="#ff7f0e", alpha=0.35, lw=0.8)
-    for event in run.supervision_events:
-        if event.action is not None:
-            ax.axvline(event.t, color="#9467bd", lw=1.6, ls="-")
-            ax.plot([event.t], [safety.level_max_m], marker="v", color="#9467bd", ms=8)
+    # Refused writes are a rug along the bottom, not full-height rules: they
+    # are events on the command channel, not events in the tank.
+    refused = [v.command.t for v, _ in run.verdicts if not v.allowed]
+    if refused:
+        y0 = ax.get_ylim()[0]
+        ax.plot(refused, [y0] * len(refused), marker="|", ls="none", ms=7,
+                mew=1.1, color=figstyle.SERIES["extra"], alpha=0.75, zorder=6,
+                clip_on=False)
 
-    ax.set_ylabel("level (m)")
-    ax.set_title(f"{run.scenario.name} — {run.scenario.description}", fontsize=10)
-    ax.legend(loc="best", fontsize=8, ncol=2)
-    ax.grid(alpha=0.25)
+    trips = [e.t for e in run.supervision_events if e.action is not None]
+    for i, trip in enumerate(trips):
+        ax.axvline(trip, color=figstyle.SERIES["extra"], lw=1.2, alpha=0.8, zorder=4)
+        if i == 0:
+            figstyle.callout(
+                ax, (trip, ax.get_ylim()[1]),
+                f"guard trips the pump  t={trip:.0f}s",
+                offset=(8, -16), colour=figstyle.SERIES["extra"],
+            )
 
-    # --- detector statistic ---
-    ax2.plot(t, [s.cusum for s in run.samples], color="#8c564b", lw=1.2)
-    ax2.axhline(cusum_threshold, color="k", ls="--", lw=1, alpha=0.5)
-    ax2.set_ylabel("R4 CUSUM")
-    ax2.set_xlabel("time (s)")
-    ax2.set_yscale("symlog", linthresh=10)
-    ax2.grid(alpha=0.25)
+    labels = [(true[-1], "true level", figstyle.TRUTH),
+              (estimate[-1], "guard estimate", figstyle.SERIES["estimate"])]
+    if spoofed:
+        labels.append((reported[-1], "shown to operator", figstyle.SERIES["sensor"]))
+    if unguarded is not None:
+        labels.append((unguarded.samples[-1].true_level_m, "no guard",
+                       figstyle.COUNTERFACTUAL))
+    figstyle.direct_labels(ax, labels)
 
-    fig.tight_layout()
-    fig.savefig(path, dpi=130)
+    figstyle.style(ax, ylabel="level (m)")
+    if ax2 is None:
+        ax.set_xlabel("time (s)")
+
+    # --- the detector, when it has something to say ---
+    if ax2 is not None:
+        ax2.fill_between(t, 0, cusum, color=figstyle.SERIES["sensor"],
+                         alpha=0.18, lw=0, zorder=2)
+        ax2.plot(t, cusum, lw=1.2, color=figstyle.SERIES["sensor"], zorder=3)
+        ax2.axhline(cusum_threshold, color=figstyle.STATUS["danger"],
+                    lw=0.9, alpha=0.6, zorder=1)
+        ax2.annotate(f"R4 alarms above {cusum_threshold:g}", xy=(0.0, cusum_threshold),
+                     xycoords=("axes fraction", "data"),
+                     xytext=(2, 3), textcoords="offset points",
+                     fontsize=figstyle.TYPE.note, color=figstyle.STATUS["danger"])
+        ax2.set_ylim(0, max(max(cusum) * 1.25, cusum_threshold * 1.35))
+        figstyle.style(ax2, xlabel="time (s)", ylabel="R4 statistic")
+
+    outcome = _outcome_note(run, unguarded, safety)
+    figstyle.titles(fig, run.scenario.name, run.scenario.description)
+    if outcome:
+        figstyle.footnote(fig, outcome)
+
+    fig.savefig(path)
     plt.close(fig)
     return path
 
 
-def plot_stealth_sweep(rows: list[dict], path: str | Path) -> Path:
-    """Attacker ramp rate vs. detection delay and peak level reached."""
-    import matplotlib
+def _outcome_note(run: RunResult, unguarded: RunResult | None, safety) -> str:
+    """The sentence a reader should leave the figure with."""
+    peak = max((s.true_level_m for s in run.samples), default=0.0)
+    if unguarded is None:
+        return f"peak level {peak:.2f} m"
+    upeak = max((s.true_level_m for s in unguarded.samples), default=0.0)
+    damaged = run.damaged
+    udamaged = unguarded.damaged
+    if udamaged and not damaged:
+        return (f"guarded peak {peak:.2f} m against the {safety.level_max_m:.2f} m limit; "
+                f"the same attack reaches {upeak:.2f} m with the guard removed")
+    if udamaged and damaged:
+        return (f"the attack succeeds either way: {peak:.2f} m guarded, "
+                f"{upeak:.2f} m unguarded")
+    return f"no damage in either run; guarded peak {peak:.2f} m, unguarded {upeak:.2f} m"
 
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
+
+def plot_stealth_sweep(rows: list[dict], path: str | Path) -> Path:
+    """Where a patient attacker wins, drawn so the band is visible.
+
+    The previous version of this figure plotted "never detected" as a detection
+    delay of zero, which reads as instant detection: exactly backwards, and on
+    the one figure whose job is to show the defence failing. Detection outcome
+    is categorical, so it is drawn as a category strip under the damage curve
+    rather than forced onto a numeric axis it does not belong on.
+    """
+    figstyle.apply()
 
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
+    rows = sorted(rows, key=lambda r: r["rate_mm_s"])
     rates = [r["rate_mm_s"] for r in rows]
-    fig, (ax, ax2) = plt.subplots(1, 2, figsize=(11, 4.2))
+    limit = rows[0]["level_max_m"]
+    guarded = [r["guarded_max_level_m"] for r in rows]
+    unguarded = [r["unguarded_max_level_m"] for r in rows]
 
-    detected = [r["detection_delay_s"] for r in rows]
-    ax.plot(rates, [d if d is not None else float("nan") for d in detected], "o-", color="#1f77b4")
-    for r, d in zip(rates, detected):
-        if d is None:
-            ax.plot([r], [0], marker="x", ms=10, color="#d62728")
+    def state(row: dict) -> str:
+        detected = row["detection_delay_s"] is not None
+        damaged = row["guarded_max_level_m"] >= limit - 1e-6
+        if damaged and not detected:
+            return "wins"
+        if damaged:
+            return "late"
+        if not detected:
+            return "harmless"
+        return "stopped"
+
+    states = [state(r) for r in rows]
+    colours = {"wins": figstyle.STATUS["danger"], "late": figstyle.STATUS["warn"],
+               "harmless": figstyle.STATUS["inert"], "stopped": figstyle.STATUS["safe"]}
+    captions = {"wins": "not detected,\ndamage", "late": "detected,\ntoo late",
+                "harmless": "not detected,\ntoo slow to matter",
+                "stopped": "detected,\nprevented"}
+
+    fig, (ax, ax2) = plt.subplots(
+        2, 1, figsize=(9.5, 5.4), sharex=True, height_ratios=[4, 1],
+        gridspec_kw={"hspace": 0.12},
+    )
+
+    # The unguarded run is drawn as a wide soft stroke underneath, because for
+    # the slow rates it lies exactly under the guarded one. A same-width line
+    # would vanish there and the reader would think the counterfactual only
+    # starts where the two separate.
+    ax.plot(rates, unguarded, lw=5.0, color=figstyle.COUNTERFACTUAL,
+            alpha=0.35, solid_capstyle="round", zorder=2)
+    ax.plot(rates, unguarded, lw=1.3, ls=(0, (4, 3)), marker="s", ms=4.5,
+            color=figstyle.COUNTERFACTUAL, zorder=3)
+    ax.plot(rates, guarded, lw=2.0, marker="o", ms=6, color=figstyle.TRUTH, zorder=5)
     ax.set_xscale("log")
-    ax.set_xlabel("bias ramp rate (mm/s)")
-    ax.set_ylabel("detection delay (s)")
-    ax.set_title("R4 detection delay\n(x = never detected)", fontsize=10)
-    ax.grid(alpha=0.3)
+    ax.set_ylim(min(guarded) - 0.08, max(unguarded) + 0.14)
 
-    ax2.plot(rates, [r["guarded_max_level_m"] for r in rows], "o-", label="with guard", color="#2ca02c")
-    ax2.plot(rates, [r["unguarded_max_level_m"] for r in rows], "s--", label="no guard", color="#7f7f7f")
-    ax2.axhline(rows[0]["level_max_m"], color="k", ls="--", lw=1, alpha=0.6)
+    # Only one thing on this figure is shaded, and it is the finding. The
+    # overflow limit gets a ruled line and a word; shading it too would put two
+    # different meanings in the same pink.
+    ax.axhline(limit, color=figstyle.STATUS["danger"], lw=0.9, alpha=0.5, zorder=1)
+    ax.annotate("overflow", xy=(0.0, limit), xycoords=("axes fraction", "data"),
+                xytext=(2, 3), textcoords="offset points",
+                fontsize=figstyle.TYPE.note, color=figstyle.STATUS["danger"])
+
+    losing = [r for r, s in zip(rates, states) if s in ("wins", "late")]
+    if losing:
+        figstyle.span(ax, min(losing) * 0.78, max(losing) * 1.28,
+                      label="the attack wins here", alpha=0.09)
+
+    figstyle.direct_labels(ax, [
+        (guarded[-1], "with the guard", figstyle.TRUTH),
+        (unguarded[-1], "guard removed", figstyle.COUNTERFACTUAL),
+    ])
+    figstyle.style(ax, ylabel="peak level reached (m)")
+
+    # --- outcome strip ---
+    # Markers on the shared x axis, and the key on its own row inside the same
+    # axes. Hanging the key off the figure in offset points put it through the
+    # axis label, then through the footnote; giving it space in the strip means
+    # nothing else can move into it.
+    for rate, st in zip(rates, states):
+        ax2.plot([rate], [0.55], marker="o", ms=11, color=colours[st],
+                 markeredgecolor=figstyle.SURFACE, markeredgewidth=1.6, zorder=3)
+    ax2.set_ylim(-1.15, 1.0)
+    ax2.set_yticks([])
     ax2.set_xscale("log")
-    ax2.set_xlabel("bias ramp rate (mm/s)")
-    ax2.set_ylabel("peak true level (m)")
-    ax2.set_title("Damage reached\n(above the dashed line = overflow)", fontsize=10)
-    ax2.legend(fontsize=8)
-    ax2.grid(alpha=0.3)
+    figstyle.style(ax2, xlabel="false-data ramp rate (mm/s, log scale)", grid="none")
+    ax2.spines["left"].set_visible(False)
 
-    fig.tight_layout()
-    fig.savefig(path, dpi=130)
+    order = [s for s in ("wins", "late", "harmless", "stopped") if s in states]
+    for i, st in enumerate(order):
+        x = (i + 0.5) / len(order)
+        ax2.annotate(
+            "\u25cf  " + captions[st].replace("\n", " "),
+            xy=(x, -0.62), xycoords=("axes fraction", "data"),
+            ha="center", va="center", fontsize=figstyle.TYPE.note, color=colours[st],
+        )
+
+    figstyle.titles(
+        fig,
+        "The band where a patient attacker wins",
+        "Same attack, slower. Each point is one ramp rate; the strip below says "
+        "what the guard managed.",
+    )
+    worst = [r for r, s in zip(rates, states) if s == "wins"]
+    if worst:
+        figstyle.footnote(
+            fig,
+            f"at {min(worst):g} mm/s the bias is never detected and the tank still "
+            f"overflows; tightening R4 to catch it trades against the false-alarm rate",
+        )
+    fig.savefig(path)
     plt.close(fig)
     return path
 
