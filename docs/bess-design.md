@@ -21,6 +21,41 @@ different cabling, different vendors and different protocols. That redundancy is
 already paid for on revenue and protection grounds. Using it for detection is
 free, and it is what this add-on is built around.
 
+## This half of the project is not a legacy system
+
+There is a reading of the tank work where the whole argument is about old
+equipment: Modbus has no authentication, the controller cannot be patched, and
+so the check has to go outside. That reading is wrong, and the storage site is
+in the project to show why.
+
+The site is modern. The site controller exposes an HTTP API over TLS with
+bearer tokens, expiry and roles. There is a jump server, a firewall, and zones
+and conduits laid out the way IEC 62443 asks for. It is not a twenty-year-old
+installation nobody can touch.
+
+Now read the `rest_limit_tamper` result with that in mind. The attacker raises
+the export limit from 20 MW to 40 MW over the REST API and then dispatches the
+fleet against the new limit. Every security control on the site worked as
+designed. The token was valid and unexpired. The role was `engineer`, which is
+the role that is meant to change limits. The request arrived through the jump
+server, over TLS, at the documented endpoint, in the right shape. Every check
+the API makes, it passed. Nothing about the request is anomalous at any layer
+that was looking at requests.
+
+What stopped it was that 40 MW through a 25 MVA transformer is not something
+anybody can authorise. B3's absolute test reads the transformer nameplate and
+not the writable limit, so the attacker's own first step bought them nothing.
+
+That makes the result a statement about two different questions rather than
+about two eras of equipment. Authentication answers who sent this. Plausibility
+answers whether this is a sane thing to do to the plant. A modern OT stack
+answers the first one well and leaves the second one completely open, and the
+second one is the question that spills sewage and melts transformers.
+
+The OPC UA experiment in [`opcua.md`](opcua.md) is the uncomfortable other half.
+Modernising a protocol improves the answer to the first question and can remove
+your ability to ask the second at all.
+
 ## The site
 
 Sixteen 1.927 MW / 3.916 MWh units — about 30.8 MW of inverter and 62 MWh —
