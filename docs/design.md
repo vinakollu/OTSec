@@ -53,8 +53,21 @@ about where that bites.
 
 This is the standard "compromised operator station" position, and it is the one
 where a bump-in-the-wire has authority: every command still has to cross the
-guard to reach the controller. It is also the position most real ICS incidents
-have started from.
+guard to reach the controller.
+
+An earlier draft of this paragraph claimed it was also where most real ICS
+incidents have started, which was an assertion with nothing behind it. The
+catalogue in [`incidents.md`](incidents.md) is an attempt to replace it with a
+count. Of the twelve incidents and campaigns in it, eight involve process
+commands issued from somewhere upstream of the controller, where a guard on the
+conduit would have been in their path. One of those eight is Pipedream, which
+is a toolkit with that capability rather than a reported use against a plant.
+Stuxnet ran on the controllers
+themselves and is the clearest counter-example. Night Dragon and Havex issued
+no process commands at all. The 2014 German steel mill account does not say.
+
+Eight of twelve is a narrow base, chosen by one person from public reporting,
+and it is worth exactly what that is worth.
 
 **What is explicitly out of scope:** an attacker inside the PLC, an attacker who
 can move the guard, and physical sabotage. If any of those hold, none of this

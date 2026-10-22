@@ -15,6 +15,11 @@ dependencies = [
     "matplotlib>=3.7",
     "pymodbus>=3.6",
     "PyYAML>=6.0",
+    # The OPC UA experiment needs a real stack: a server that negotiates a
+    # security policy, and a client that will not talk to it unless it does.
+    # Writing one would mean the result measured this project's idea of what
+    # SignAndEncrypt costs rather than what it costs.
+    "asyncua>=1.1",
 ]
 
 [project.optional-dependencies]

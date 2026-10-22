@@ -296,6 +296,43 @@ Almost all of them are the site controller's own commands inside attack
 scenarios, refused after the guard had established that a unit was lying about
 its own state. Both denominators are published for the same reason as before.
 
+### The site is not an old system, and that is the point
+
+It would be easy to read this project as being about old equipment. The tank
+half is: Modbus TCP has no authentication and no encryption, the controller
+obeys any word written to it, and the whole argument for putting the check
+outside is that you cannot patch the thing inside.
+
+The storage site is the opposite case and it is in the project deliberately. It
+is a modern system. The site controller has an HTTP API over TLS, with bearer
+tokens, expiry and roles. There is a jump server, a firewall, zones and
+conduits laid out the way IEC 62443 asks for. Nothing about it is a
+twenty-year-old installation nobody can touch.
+
+Now look at what happened in the `rest_limit_tamper` scenario. The attacker
+raises the site's export limit from 20 MW to 40 MW over the REST API, and then
+dispatches the fleet against the new limit. Every security control on that site
+worked exactly as designed. The token was valid and unexpired. The role was
+`engineer`, which is the role that is supposed to change limits. The request
+arrived through the jump server, over TLS, at the documented endpoint, in the
+right shape. Every check the API makes, it passed. There is nothing anomalous
+about the request at any layer that was looking.
+
+What stopped it was that 40 MW through a 25 MVA transformer is not something
+anybody can authorise. That is a fact about the iron in the yard, and no token
+can change it.
+
+So the storage site is not evidence that modern OT systems are fine and legacy
+ones are the problem. It is evidence that these are two different questions.
+Authentication answers who sent this. Plausibility answers whether this is a
+sane thing to do to the plant. A modern stack closes the first question well
+and leaves the second one completely open, and the second one is the one that
+spills sewage and melts transformers.
+
+The OPC UA work below is the uncomfortable other half of that. Modernising the
+protocol improves the answer to the first question and can remove your ability
+to ask the second at all.
+
 ### Why three meters beat one
 
 The interesting experiment biases the revenue meter at different speeds and asks
@@ -418,6 +455,151 @@ identity, and a spoofed address defeats the check outright.
 
 Full detail is in [`docs/devices.md`](docs/devices.md).
 
+## Attacks that actually happened
+
+Everything above was written from the design outward. Each scenario exists to
+exercise a rule, which is the right way to build a test suite and a weak way to
+argue that the design matters: the attacks and the rules were written by the
+same person on the same afternoon, and sixty of sixty is what you would expect
+from that whether the idea was any good or not.
+
+So the project also works in the other direction. It takes twelve publicly
+reported incidents and campaigns, from Maroochy Shire in 2000 to the Unitronics
+controllers in water utilities in 2023, and asks of each one whether this guard
+would have been in a position to do anything about it. Each row points at
+evidence that already exists elsewhere in the project rather than carrying a
+copy of its own attack, so a renamed scenario breaks a row loudly instead of
+quietly.
+
+For four of the twelve the answer is no, and those four are the useful part.
+
+Stuxnet ran on the controllers. Its rotor commands never crossed a network link
+a bump-in-the-wire could have been installed on. The rules recognise the
+pattern fine, and the scenario derived from it is detected and its damage
+prevented, and the incident is still something this device would have been
+blind to because of where the device sits. Counting it as a hit would be
+claiming a geometry the project has not earned.
+
+Night Dragon took documents. Havex inventoried OPC servers. Neither
+manipulated a process, so there is no command for a plausibility rule to judge,
+and the correct behaviour is to forward the traffic and contribute nothing. The
+Havex row is worth having for exactly that reason: the OPC UA work below
+includes a reconnaissance episode that browses and reads the whole address
+space, and it is scored as traffic the guard must not refuse rather than as an
+attack it caught.
+
+The 2014 German steel mill report says a blast furnace could not be brought to
+a controlled shutdown. It does not say what was written, to what, or whether a
+command was issued, suppressed, or an interlock disabled. Those are three
+different scenarios with three different results, and building one with this
+incident's name on it would be presenting an invention as evidence. The row
+stays empty and says so.
+
+Two scenarios had to be added because nothing in the suite had their shape. One
+runs the overdrive in bursts behind a transmitter replaying its own earlier
+recording, which is harder on a decaying detector than one continuous push
+behind a frozen reading. The other is a single set-point write, above the top of
+the tank, that moves no actuator: the plant's own control loop does everything
+harmful that follows, correctly, against a target it was handed. That is the
+cheapest harmful write there is, and no amount of reasoning about credentials,
+rate or volume can see anything wrong with it.
+
+| Metric | Result |
+| --- | --- |
+| Incidents in the catalogue | 12 |
+| A plausibility guard is the right control for | 8 |
+| Of those, an attack of that shape was objected to | 8 of 8 |
+| By a physics rule | 7 |
+| By the access policy alone | 1 |
+| Of those, damage occurred without the guard | 8 |
+| Of those, the guard prevented it | 8 of 8 |
+
+The last two rows of that detection block are split for the same reason the
+device matrix splits them. An access check that stops an attack is worth having
+and is not evidence for the claim this project makes. The one incident carried
+by the access policy alone is the Unitronics intrusion, where the attack is a
+write from a device the guard has never heard of and there is nothing physical
+to reason about until it lands.
+
+Every account in the catalogue is public reporting as I understood it, checked
+against no primary sources, and every number in every scenario is this
+project's own rather than an incident's measured parameter. Where the reporting
+is disputed the catalogue says so. Full detail is in
+[`docs/incidents.md`](docs/incidents.md).
+
+## What encryption costs the guard
+
+Modbus has no security, so the guard's access to the traffic has been assumed
+throughout. OPC UA is the protocol a plant replaces Modbus with, and it changes
+that: a client and a server negotiate a security mode, and the negotiation
+decides how much of their conversation anybody else can read.
+
+Same guard, same attacks, same tank, three times, changing only that setting.
+
+Under `None` everything is cleartext. The guard decodes the write, runs the
+same five rules, and refuses by withholding the request and answering the
+client with a `BadUserAccessDenied` in the device's voice. Withholding a
+request leaves the two ends disagreeing about how many messages have passed, so
+it renumbers the rest of the conversation in both directions. The write never
+lands and the session carries on.
+
+Under `Sign` the guard still reads every write and can alter none of them,
+because each message is signed and the guard has none of the keys. It can still
+refuse, by withholding the frame and cutting the channel, and it can still
+write a protective command on its own session.
+
+Under `SignAndEncrypt` sixteen bytes of each message stay legible: the type,
+the length, the channel and the key. Nothing in them says which node is being
+written, or to what.
+
+The interesting result is not that the guard goes blind. It is what happened to
+the half that was supposed to survive. The supervisor polls the level itself,
+so it never needed to read anyone else's traffic, and the expectation was that
+it would come through intact. It did not. Its lookahead integrates a model
+forward under the commands the guard has forwarded, and on an encrypted channel
+it has forwarded commands it never read, so the model says both actuators are
+shut. When the level rose, the consistency check reached the only conclusion
+its premise allows: the transmitter must be lying. It went open loop, froze its
+estimate at 0.99 m, and watched the tank fill to 2.00 m while holding a CUSUM
+above 20,000.
+
+That is a design fault rather than a tuning problem, so the guard now carries a
+second supervisor that runs only when it knows it is command-blind. It reads
+the level and the level's slope, predicts forward with no model at all, and
+trips on the measurement. It is the weakest protection in the project, it has
+no idea which command caused anything, and it is the only thing left on an
+encrypted channel.
+
+Two attacks show what that is worth. The overflow is prevented in all three
+modes, because its commands are individually legal, nothing refuses them at the
+wire in any mode, and the supervisor that saves the tank works blind. The
+set-point write separates them: refused on its range under `None` before the
+tank moves; refused under `Sign` by cutting the channel, after which the
+operator cannot get back in and every recovery write fails; and under
+`SignAndEncrypt` it lands, the control loop starts filling toward a target
+above the top of the tank, the blind supervisor trips the pump repeatedly, the
+control loop overrides each trip because the guard cannot see or stop its
+commands, and the tank overflows.
+
+| What the guard could read | None | Sign | SignAndEncrypt |
+| --- | --- | --- | --- |
+| Request and response bytes legible | 100.0% | 100.0% | 9.5% |
+| Request bodies decoded | 1361 | 1032 | 0 |
+| Ordinary writes refused | 0 of 34 | 0 of 28 | 0 of 31 |
+
+Two things in the results need reading carefully. The `Sign` column looks as
+good as `None` and is not: four of its five refusals were carried out by
+cutting the channel, and in every one the operator's writes after the attack
+window all failed. The plant was saved and the operator was locked out of it.
+And the encrypted column has a false alarm in it. The only detector left there
+counts message arrivals and cannot tell a read from a write, so a
+reconnaissance sweep that writes nothing looks like a flood, and the guard cuts
+the operator's session over it.
+
+The rules did not get worse. The traffic they run on disappeared. Full detail,
+including the deployment option this does not model, is in
+[`docs/opcua.md`](docs/opcua.md).
+
 ## Running it yourself
 
 ```bash
@@ -432,6 +614,8 @@ python scripts/run_demo.py --attack overflow --duration 25
 python scripts/run_eval.py --stealth-sweep
 python scripts/run_site_eval.py --sweeps
 python scripts/run_matrix.py --ablation
+python scripts/run_incidents.py --matrix
+python scripts/run_opcua.py
 python scripts/bench_latency.py
 python -m pytest
 ```
@@ -459,10 +643,18 @@ when you only want one scenario.
 
 Approximate times on a laptop: the demo takes twice whatever `--duration` you
 give it, `run_eval.py` takes 6 seconds, `run_site_eval.py` takes 95 seconds and
-about 4 minutes with `--sweeps`, and the test suite takes a minute for 222 tests
-and one expected failure. The device matrix takes about twenty minutes with
-`--ablation` and about half that without. Everything under `results/` is regenerated by these
-commands and is not tracked by git.
+about 4 minutes with `--sweeps`, and the test suite takes about 90 seconds. The
+device matrix takes about twenty minutes with `--ablation` and about half that
+without. `run_incidents.py` takes a couple of seconds, or a few minutes with
+`--matrix`, and reads the OPC UA rows out of `results/opcua/` if that has been
+run. `run_opcua.py` takes several minutes: forty-two episodes, each paying for
+its own secure-channel handshake.
+
+Two of these are not reproducible to the sample, and say so in their own
+output. The device matrix and the OPC UA experiment run over real sockets on a
+scaled clock, so the number of writes an episode produces moves by a few either
+way between runs. Their outcomes are stable; their counts are not. Everything
+under `results/` is regenerated by these commands and is not tracked by git.
 
 ## How the code is laid out
 
@@ -485,7 +677,15 @@ src/otguard/
     goose.py           IEC 61850 frames, stNum and sqNum handling, subscriber
     prp.py             redundancy control trailer, dual-LAN mismatch
     rest.py            site controller API, roles and tokens
+  opcua/
+    framing.py         the OPC UA binary transport, and what each mode hides
+    nodes.py           the device's address space, and the guard's map of it
+    device.py          a field device that speaks OPC UA, security modes and all
+    proxy.py           the guard on the wire, with powers that depend on the mode
+    masters.py         the clients: one honest, five not
+    certs.py           self-signed test certificates
   scenarios/           labelled attacks and ordinary situations
+  scenarios/incidents.py  twelve reported incidents, and what speaks to each
   eval/                harness, metrics, sweeps, figures, command line
   eval/matrix.py       every sender against every receiver, over sockets
   clock.py             one timeline, faster than the wall
@@ -500,9 +700,11 @@ src/otguard/
     proxy.py           the guard on the wire
     deviceproxy.py     the guard on the wire, for any sender and receiver
 config/default.yaml    every tunable number, with the reasoning next to it
-scripts/               run_eval.py, run_site_eval.py, run_demo.py, bench_latency.py
-tests/                 222 tests and one expected failure
-docs/                  design.md, bess-design.md, heilmeier.md
+scripts/               run_eval.py, run_site_eval.py, run_matrix.py, run_demo.py,
+                       run_incidents.py, run_opcua.py, bench_latency.py
+tests/                 275 tests and one expected failure
+docs/                  design.md, bess-design.md, devices.md, incidents.md,
+                       opcua.md, heilmeier.md
 ```
 
 ## More detail
@@ -516,6 +718,14 @@ rules B1 to B8, the protocols, the results, and where it fails.
 [`docs/devices.md`](docs/devices.md) covers the senders and receivers: what
 changes between device classes, what the wire policy is for, and where those
 numbers are weaker than they look.
+
+[`docs/incidents.md`](docs/incidents.md) covers the twelve reported incidents:
+which of them this guard could speak to, which it could not, and why the second
+list is the interesting one.
+
+[`docs/opcua.md`](docs/opcua.md) covers the security-mode experiment: what each
+mode leaves a bump-in-the-wire, how the supervisor failed when it could not see
+the commands, and the deployment option the experiment does not model.
 
 [`docs/heilmeier.md`](docs/heilmeier.md) answers the Heilmeier questions.
 
