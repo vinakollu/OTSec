@@ -134,3 +134,27 @@ guard:
                                # state, so you warn rather than blindly block.
     R5_lockout: block          # after a latched trip, only self-limiting
                                # configurations get through until acknowledged
+
+# ----------------------------------------------------------------------
+# Device scanner
+# ----------------------------------------------------------------------
+# Who is still answering. Observability that the guard acts on: a measurement
+# source the scanner cannot reach stops counting as a vote in B6, because a
+# source whose link has dropped keeps serving its last value and a frozen
+# reading is indistinguishable from an agreeing one.
+scan:
+  enabled: true
+  interval_s: 1.0          # how often every device is asked
+  timeout_s: 1.0           # wall clock, not simulation time: a socket's
+                           # patience belongs to the network, not the experiment
+  # Asymmetric on purpose. The scanner's output reaches the vote, so a device
+  # that flaps drops a measurement in and out of it several times a second.
+  # Slow to condemn, slower to forgive. fail_threshold x interval_s is the
+  # worst case before the guard hears a measurement has gone quiet: 3 s, inside
+  # the site's own supervision cycle and well outside what a dropped poll
+  # can reach.
+  fail_threshold: 3        # consecutive failures before a device is DOWN
+  ok_threshold: 2          # consecutive answers before it is UP again
+  degrade_vote: true       # let a stale source stop counting. Off reproduces
+                           # the behaviour from before the scanner existed,
+                           # which is what makes the comparison mean anything

@@ -33,7 +33,13 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Iterable, Sequence
 
-from ..bess.types import BreakerState, SiteCommand, SiteCommandKind, SiteObservation
+from ..bess.types import (
+    BreakerState,
+    MeasurementSource,
+    SiteCommand,
+    SiteCommandKind,
+    SiteObservation,
+)
 from ..config import Config
 from ..site.topology import SiteTopology, default_site_topology
 from .site_estimator import PackEstimator, SourceVoter, VoteResult
@@ -186,11 +192,39 @@ class SiteGuard:
         # Standing alarms already surfaced, so supervision reports each once.
         self._reported_energy_alarms: set[str] = set()
         self._reported_source_alarm = False
+        # Which measurement sources the guard has been told are still arriving,
+        # and whether the loss of quorum has been reported yet.
+        self._reported_quorum_loss: frozenset[MeasurementSource] | None = None
 
         self.stats = SiteStats()
         self.verdicts: list[SiteVerdict] = []
         self.supervision_events: list[SiteSupervisionEvent] = []
         self.votes: list[VoteResult] = []
+
+    # ------------------------------------------------------------------
+    # Measurement availability
+    # ------------------------------------------------------------------
+    def set_live_sources(self, sources: Iterable[MeasurementSource]) -> None:
+        """Tell the guard which power measurements are still being refreshed.
+
+        The device scanner is what knows this, and the guard deliberately does
+        not import it: the dependency runs one way, so the guard can be tested
+        against a hand-written set and the scanner can be tested without a
+        guard. Connecting the two is the runner's job, and *not* connecting
+        them is the ablation — a guard nobody calls this on counts all three
+        sources, exactly as it did before the scanner existed.
+
+        The consequence is in :meth:`SourceVoter.set_counted`: a source that
+        has stopped arriving keeps serving its last value, that frozen value
+        looks like agreement, and dropping it costs the vote the quorum it
+        needs to name a liar.
+        """
+        self.voter.set_counted(set(sources))
+
+    @property
+    def can_name_lying_source(self) -> bool:
+        """Does the vote still have three measurements to compare?"""
+        return len(self.voter.counted) >= 3
 
     # ------------------------------------------------------------------
     # Telemetry
@@ -258,6 +292,38 @@ class SiteGuard:
             findings.append(
                 RuleFinding("B6", "supervision", self.voter.alarm_detail,
                             margin=self.voter.cusum.get(self.voter.alarm, 0.0))
+            )
+
+        # --- measurements that stopped arriving ---
+        # This is not an attack detection and it is not a false alarm either.
+        # It is the guard saying what it can no longer establish. Reported once
+        # per change in which sources are counted, because a site running for an
+        # hour on two meters should say so once and not once every scan.
+        counted = frozenset(self.voter.counted)
+        if counted != self._reported_quorum_loss and len(counted) < len(MeasurementSource):
+            self._reported_quorum_loss = counted
+            direction = direction or "integrity"
+            missing = [s for s in MeasurementSource if s not in counted]
+            if len(counted) >= 2:
+                consequence = (
+                    "two measurements can still show a disagreement and can no "
+                    "longer say which of them is wrong"
+                )
+            elif len(counted) == 1:
+                consequence = (
+                    "one measurement left, so there is no cross-check at all and "
+                    "a bias on it is undetectable"
+                )
+            else:
+                consequence = "no measurement of site power is arriving"
+            findings.append(
+                RuleFinding(
+                    "B6",
+                    "quorum",
+                    f"{', '.join(s.label for s in missing)} stopped being refreshed; "
+                    f"{consequence}",
+                    margin=float(len(MeasurementSource) - len(counted)),
+                )
             )
 
         # --- POI excursion under the trusted measurement ---

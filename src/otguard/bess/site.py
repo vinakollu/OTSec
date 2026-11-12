@@ -103,6 +103,15 @@ class BessSite:
         # network — that gap is what rule B3 uses to catch limit tampering.
         self.poi_limit_mw = cfg.poi_limit_mw
         self.ramp_limit_mw_s = cfg.ramp_limit_mw_s
+        # Whether each measurement's communications link is up. A meter whose
+        # DNP3 link drops does not stop existing and SCADA does not stop having
+        # a number for it: the number stops changing. That distinction is the
+        # whole reason the scanner matters, so the model reproduces it rather
+        # than making an offline source's reading disappear.
+        self._link_up: dict[MeasurementSource, bool] = {
+            src: True for src in MeasurementSource
+        }
+        self._last_reading: dict[MeasurementSource, float] = {}
 
     # ------------------------------------------------------------------
     # Lookup
@@ -218,6 +227,11 @@ class BessSite:
         which is what sets the agreement tolerance rule B6 has to live with: too
         tight and honest measurement scatter raises alarms, too loose and a small
         injected bias hides inside the band.
+
+        A measurement whose link is down reports its last value instead of a
+        fresh one. Nothing in the observation says so, which is the point: a
+        frozen number looks exactly like a number that agrees, and a median of
+        three cannot tell them apart. Finding that out is the scanner's job.
         """
         reports = tuple(
             PackReport(
@@ -234,8 +248,10 @@ class BessSite:
         return SiteObservation(
             t=t,
             packs=reports,
-            poi_meter_mw=self.state.p_poi_mw + self._noise(self.cfg.meter_noise_mw),
-            relay_mw=self.state.p_poi_mw + self._noise(self.cfg.relay_noise_mw),
+            poi_meter_mw=self._reading(
+                MeasurementSource.POI_METER, self.cfg.meter_noise_mw
+            ),
+            relay_mw=self._reading(MeasurementSource.RELAY, self.cfg.relay_noise_mw),
             frequency_hz=self.state.frequency_hz,
             voltage_pu=self.state.voltage_pu,
             breaker=self.state.breaker,
@@ -256,6 +272,34 @@ class BessSite:
 
     def _noise(self, std: float) -> float:
         return self._rng.gauss(0.0, std) if std > 0.0 else 0.0
+
+    # ------------------------------------------------------------------
+    # Measurement links
+    # ------------------------------------------------------------------
+    def _reading(self, source: MeasurementSource, noise_mw: float) -> float:
+        """This source's reading, fresh if its link is up and stale if not."""
+        if self._link_up[source]:
+            value = self.state.p_poi_mw + self._noise(noise_mw)
+            self._last_reading[source] = value
+            return value
+        # Never refreshed, so the first scan after a link drops still has to
+        # answer something. Falling back to live truth would make a lost link
+        # harmless, so an unseeded source reads zero, which is what a SCADA
+        # point that has never had a value holds.
+        return self._last_reading.get(source, 0.0)
+
+    def link_up(self, source: MeasurementSource) -> bool:
+        return self._link_up[source]
+
+    def set_link(self, source: MeasurementSource, up: bool) -> None:
+        """Take a measurement's communications link down, or put it back.
+
+        The pack telemetry sum has no link of its own: it is derived from
+        sixteen units that each have one, so taking a unit offline is how that
+        measurement degrades. Setting it here is still allowed, because a lost
+        Modbus path to the whole fleet is a real single point of failure.
+        """
+        self._link_up[source] = bool(up)
 
     # ------------------------------------------------------------------
     # Aggregate helpers

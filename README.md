@@ -356,6 +356,57 @@ blind spot exactly, which is what makes the comparison mean anything. Biasing th
 protection relay instead makes the guard name the relay, so the vote identifies
 which instrument is lying rather than only noticing a disagreement.
 
+### A majority of stale readings outvotes the truth
+
+Three measurements beat one because an attacker has to corrupt two of them to
+move the consensus. That argument assumes all three are still arriving, and
+nothing in the guard was checking.
+
+A measurement whose communications link drops does not disappear. SCADA keeps
+serving the last value it received, and a frozen number looks exactly like a
+number that agrees. Cut two of the three links and the two stale readings agree
+with each other, because they are stuck at the same old figure. The majority is
+now wrong, and B6 does what it was built to do: it names the one instrument
+still telling the truth.
+
+The run that shows it ramps the fleet to 19 MW, cuts the revenue meter's link,
+then the protection relay's, then ramps the site down to idle.
+
+| Two links cut, site ramped down | Scanner informs the guard | Scanner does not |
+| --- | --- | --- |
+| Error in the guard's belief | −0.04 MW | +18.23 MW |
+| Measurements counted | 1 of 3 | 3 of 3 |
+| Source named as lying | none | Megapack telemetry sum |
+
+The right-hand column is the one to read. The guard believes the site is
+exporting 18.8 MW while it is exporting 0.6 MW, and it has formally accused the
+only honest instrument of lying. This is the threat model's "an attacker who
+controls the field devices can make all three measurements agree" reached far
+more cheaply: an attacker who can drop two links never has to touch a meter.
+
+The fix is a device scanner that asks every device whether it is still
+answering and tells the guard which measurements are still being refreshed. A
+stale source stops counting as a vote. What that costs is honest and worth
+stating: with one measurement gone the vote can still see a disagreement but
+can no longer say which source is wrong, and with two gone there is no
+cross-check left at all. The guard reports that it has lost quorum rather than
+carrying on as though three sources were still arriving, because the useful
+thing here is not detection but knowing what can no longer be established.
+
+A stale source is also never accused. Integrating a frozen reading's drift
+against consensus would eventually name it a liar for the crime of not being
+there, and send an engineer to recalibrate a meter whose only fault is a dead
+switch.
+
+Two caveats. The scanner's debounce means the guard hears about a lost
+measurement three sweeps late, three seconds at the default interval, and that
+delay is deliberate: a scanner that condemned a device on one missed poll would
+drop measurements in and out of the vote several times a second. And a probe
+that comes back clean proves only that something answered. On a network the
+attacker is assumed to hold, anyone who can keep a socket open and echo a
+canned response keeps a dead device looking alive. This is monitoring, not
+authentication.
+
 ### Where the site guard fails
 
 `stealth_dispatch_creep` is in the suite because it defeats the design. B3
@@ -610,6 +661,7 @@ Nothing else needs installing. The scripts add `src/` to the path themselves, an
 figures are drawn without a display.
 
 ```bash
+python scripts/run_live.py
 python scripts/run_demo.py --attack overflow --duration 25
 python scripts/run_eval.py --stealth-sweep
 python scripts/run_site_eval.py --sweeps
@@ -619,6 +671,18 @@ python scripts/run_opcua.py
 python scripts/bench_latency.py
 python -m pytest
 ```
+
+`run_live.py` is the one to run first. It stands up the same stack and narrates
+it while it happens, rather than printing a table once the interesting part is
+over. It draws into a terminal, redrawn in place, and serves the same picture to
+a browser at `http://127.0.0.1:8765/`; both read one event stream, so neither
+can show a number the other does not have. `--no-web` skips the browser,
+`--only tank` or `--only site` runs half of it, and outside a terminal it falls
+back to one line per event so a transcript stays readable.
+
+It runs the tank attack first, then the battery site twice, and the site's
+second run is the one worth watching. Full detail in
+[`docs/live.md`](docs/live.md).
 
 `run_demo.py` is the short version of the whole project. It stands up the
 simulated controller, the guard and an attacker driving a stock `pymodbus`
@@ -699,12 +763,23 @@ src/otguard/
     masters.py         the senders: HMI, SCADA, peer controller, historian
     proxy.py           the guard on the wire
     deviceproxy.py     the guard on the wire, for any sender and receiver
+  scan/
+    probe.py           liveness probes, and what each one's answer proves
+    scanner.py         up/down per device, debounced both ways
+    targets.py         the device lists, and which rows are model reads
+  live/
+    events.py          what a watcher is told, in one JSON-safe shape
+    bus.py             fan-out that never blocks the plant
+    terminal.py        the screen, redrawn in place
+    web.py             server-sent events over a hand-rolled HTTP server
+    page.py            the browser view, self-contained, no CDN
 config/default.yaml    every tunable number, with the reasoning next to it
-scripts/               run_eval.py, run_site_eval.py, run_matrix.py, run_demo.py,
-                       run_incidents.py, run_opcua.py, bench_latency.py
-tests/                 275 tests and one expected failure
+scripts/               run_live.py, run_eval.py, run_site_eval.py, run_matrix.py,
+                       run_demo.py, run_incidents.py, run_opcua.py,
+                       bench_latency.py
+tests/                 306 tests and one expected failure
 docs/                  design.md, bess-design.md, devices.md, incidents.md,
-                       opcua.md, heilmeier.md
+                       opcua.md, live.md, heilmeier.md
 ```
 
 ## More detail
@@ -726,6 +801,11 @@ list is the interesting one.
 [`docs/opcua.md`](docs/opcua.md) covers the security-mode experiment: what each
 mode leaves a bump-in-the-wire, how the supervisor failed when it could not see
 the commands, and the deployment option the experiment does not model.
+
+[`docs/live.md`](docs/live.md) covers the device scanner and the live view: why
+a frozen measurement outvotes an honest one, what dropping it costs the guard,
+which rows of the device table are measured and which are modelled, and how to
+run the thing.
 
 [`docs/heilmeier.md`](docs/heilmeier.md) answers the Heilmeier questions.
 
