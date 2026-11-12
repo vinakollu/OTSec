@@ -462,11 +462,42 @@ class BessConfig:
 
 
 @dataclass(frozen=True)
+class ScanConfig:
+    """How often the device scanner asks, and how sure it has to be.
+
+    The two thresholds are asymmetric on purpose. The scanner's output reaches
+    the cross-source vote, so a device that flaps between states would drop a
+    measurement in and out of the vote several times a second; being slow to
+    condemn and slower to forgive costs a little detection latency and buys a
+    device table that holds still.
+
+    ``fail_threshold`` times ``interval_s`` is the worst case before the guard
+    hears that a measurement has gone quiet: three sweeps at one second is
+    three seconds, inside the site's own supervision cycle and well outside
+    the range a dropped poll can reach.
+    """
+
+    enabled: bool = True
+    interval_s: float = 1.0
+    #: Wall-clock, not simulation time: a socket's patience is a property of
+    #: the network rather than of the experiment.
+    timeout_s: float = 1.0
+    fail_threshold: int = 3
+    ok_threshold: int = 2
+    #: Let a measurement source that has gone quiet stop counting as a vote.
+    #: Turning this off reproduces the behaviour from before the scanner
+    #: existed, which is what makes the comparison in the results mean
+    #: anything.
+    degrade_vote: bool = True
+
+
+@dataclass(frozen=True)
 class Config:
     plant: PlantConfig = field(default_factory=PlantConfig)
     safety: SafetyConfig = field(default_factory=SafetyConfig)
     guard: GuardConfig = field(default_factory=GuardConfig)
     bess: BessConfig = field(default_factory=BessConfig)
+    scan: ScanConfig = field(default_factory=ScanConfig)
 
 
 def _build(cls: type, data: Mapping[str, Any] | None) -> Any:
@@ -512,6 +543,7 @@ def load_config(path: str | Path | None = None, overrides: Mapping[str, Any] | N
         safety=_build(SafetyConfig, raw.get("safety")),
         guard=_build_guard(raw.get("guard")),
         bess=_build_bess(raw.get("bess")),
+        scan=_build(ScanConfig, raw.get("scan")),
     )
 
 

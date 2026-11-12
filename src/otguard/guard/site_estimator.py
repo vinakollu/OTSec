@@ -207,7 +207,13 @@ class PackEstimator:
 
 @dataclass
 class VoteResult:
-    """The outcome of comparing the three power measurements."""
+    """The outcome of comparing the power measurements that are still arriving.
+
+    ``values`` holds every source's reading; ``counted`` holds the ones the vote
+    was actually taken over. Those differ when the scanner has found a source
+    that is no longer being refreshed, and keeping both means a report can say
+    what the guard ignored rather than silently narrowing.
+    """
 
     t: float
     values: dict[MeasurementSource, float]
@@ -215,14 +221,33 @@ class VoteResult:
     outlier: MeasurementSource | None = None
     spread_mw: float = 0.0
     disagreement_mw: float = 0.0
+    counted: frozenset[MeasurementSource] = frozenset(MeasurementSource)
 
     @property
     def has_outlier(self) -> bool:
         return self.outlier is not None
 
+    @property
+    def can_name_outlier(self) -> bool:
+        """Does the vote still have the quorum to say *which* source is lying?
+
+        Three sources name a liar: two agree and the third does not. Two can
+        only notice that they disagree, which is the tank's predicament again —
+        a detector that bounds how fast a lie can grow but not how far. One is
+        no cross-check at all. Saying this out loud in the result is better
+        than a median of two that silently reads like a consensus.
+        """
+        return len(self.counted) >= 3
+
+    @property
+    def degraded(self) -> bool:
+        return len(self.counted) < len(MeasurementSource)
+
     def describe(self) -> str:
         parts = ", ".join(
-            f"{src.label} {value:+.3f} MW" for src, value in self.values.items()
+            f"{src.label} {value:+.3f} MW"
+            + ("" if src in self.counted else " (not counted, stale)")
+            for src, value in self.values.items()
         )
         return parts
 
@@ -250,6 +275,41 @@ class SourceVoter:
         self.alarm: MeasurementSource | None = None
         self.alarm_detail = ""
         self.history: list[VoteResult] = []
+        # Which sources are still being refreshed. Everything until the scanner
+        # says otherwise, so a voter built without one behaves exactly as it
+        # did before the scanner existed.
+        self.counted: set[MeasurementSource] = set(MeasurementSource)
+        self.stale_detail = ""
+        self._last_trusted_mw = 0.0
+
+    def set_counted(self, sources: set[MeasurementSource]) -> None:
+        """Restrict the vote to the sources that are still arriving.
+
+        A source whose link has dropped does not stop having a value: SCADA
+        keeps serving the last one it got. That frozen number sits in the
+        median looking like agreement, and on a site that is ramping it drags
+        the consensus toward where the plant used to be. Dropping it is the
+        only safe move, and it costs the vote its quorum, which
+        :attr:`VoteResult.can_name_outlier` reports rather than hides.
+        """
+        self.counted = set(sources)
+        missing = [s for s in MeasurementSource if s not in self.counted]
+        if missing:
+            self.stale_detail = (
+                "not counting " + ", ".join(s.label for s in missing)
+                + ": no longer being refreshed"
+            )
+        else:
+            self.stale_detail = ""
+
+    def referred(self, observation: SiteObservation) -> dict[MeasurementSource, float]:
+        """Every source's reading, referred to the point of interconnection.
+
+        Public because a display needs all three numbers, counted or not: the
+        case worth seeing is two stale readings agreeing with each other, and a
+        view that only showed the consensus would hide it.
+        """
+        return self._referred(observation)
 
     def _referred(self, observation: SiteObservation) -> dict[MeasurementSource, float]:
         """Put all three measurements at the same electrical point.
@@ -279,7 +339,21 @@ class SourceVoter:
 
     def vote(self, observation: SiteObservation) -> VoteResult:
         values = self._referred(observation)
-        ordered = sorted(values.values())
+        counted = frozenset(self.counted) or frozenset(MeasurementSource)
+        live = {src: v for src, v in values.items() if src in counted}
+        ordered = sorted(live.values())
+        if not ordered:
+            # Every measurement has gone quiet. There is nothing to compare, and
+            # saying so is the only honest answer: a consensus invented out of
+            # no inputs is worse than admitting the site is unmeasured.
+            result = VoteResult(
+                t=observation.t,
+                values=values,
+                consensus_mw=0.0,
+                counted=counted,
+            )
+            self.history.append(result)
+            return result
         if not self.cfg.enabled:
             # Ablation path. The flag has to stop the voter, not just the rule
             # that reports it: gating only the rule would leave the alarm
@@ -290,22 +364,29 @@ class SourceVoter:
                 values=values,
                 consensus_mw=ordered[len(ordered) // 2],
                 spread_mw=max(ordered) - min(ordered),
+                counted=counted,
             )
             self.history.append(result)
             return result
-        consensus = ordered[len(ordered) // 2]     # median of three
+        consensus = _median(ordered)
 
-        deviations = {src: value - consensus for src, value in values.items()}
+        # Deviations are measured only for the sources being counted. A source
+        # that has gone quiet is not lying, it is absent, and integrating its
+        # frozen reading's drift from consensus would eventually name it a liar
+        # for the crime of not being there.
+        deviations = {src: value - consensus for src, value in live.items()}
         spread = max(ordered) - min(ordered)
 
         outlier: MeasurementSource | None = None
-        beyond = [src for src, dev in deviations.items() if abs(dev) > self.cfg.tolerance_mw]
-        if len(beyond) == 1:
-            # The other two agree with each other, so the odd one out is named.
-            candidate = beyond[0]
-            others = [v for src, v in values.items() if src is not candidate]
-            if abs(others[0] - others[1]) <= self.cfg.tolerance_mw:
-                outlier = candidate
+        if len(live) >= 3:
+            beyond = [src for src, dev in deviations.items()
+                      if abs(dev) > self.cfg.tolerance_mw]
+            if len(beyond) == 1:
+                # The other two agree with each other, so the odd one out is named.
+                candidate = beyond[0]
+                others = [v for src, v in live.items() if src is not candidate]
+                if abs(others[0] - others[1]) <= self.cfg.tolerance_mw:
+                    outlier = candidate
 
         result = VoteResult(
             t=observation.t,
@@ -314,6 +395,7 @@ class SourceVoter:
             outlier=outlier,
             spread_mw=spread,
             disagreement_mw=abs(deviations[outlier]) if outlier else 0.0,
+            counted=counted,
         )
 
         self._accumulate(deviations, result)
@@ -327,6 +409,16 @@ class SourceVoter:
         threshold means "this many tolerance-widths of sustained deviation"
         rather than a megawatt-seconds figure nobody can reason about.
         """
+        if len(result.counted) < 3:
+            # Quorum lost. Two readings that disagree are two candidates for
+            # liar and no way to choose, so nothing is integrated and nothing
+            # is named. Accumulating anyway would leave the CUSUMs primed, and
+            # the moment the third source came back one of them would cross
+            # immediately and name a source on evidence gathered while there
+            # was no majority to measure against. The disagreement is still
+            # reported, as spread, under a result that says it cannot attribute.
+            return
+
         tolerance = max(self.cfg.tolerance_mw, 1e-9)
         for src, deviation in deviations.items():
             normalised = abs(deviation) / tolerance
@@ -336,6 +428,8 @@ class SourceVoter:
             return
 
         for src, value in self.cusum.items():
+            if src not in result.counted:
+                continue
             if value > self.cfg.cusum_threshold:
                 self.alarm = src
                 self.alarm_detail = (
@@ -353,22 +447,51 @@ class SourceVoter:
         This is what makes the vote actionable rather than merely informative:
         once a source is named, the rest of the guard keeps running on the
         remaining two instead of going blind or believing the liar.
+
+        A source the scanner has found to be stale is dropped here too, and for
+        a sharper reason than suspicion: its number is real, it is just old. On
+        a ramping site a stale reading pulls the median toward where the plant
+        was a minute ago, so believing it means the guard protects a site that
+        no longer exists.
         """
         values = self._referred(observation)
+        live = {src: v for src, v in values.items() if src in self.counted}
+        if not live:
+            # Nothing is arriving. Returning zero would read as "the site is
+            # idle", which is the most dangerous possible lie here, so the
+            # last believed figure is held instead and the caller is expected
+            # to be acting on the lost-quorum report by now.
+            return self._last_trusted_mw
         if self.alarm is not None:
-            values.pop(self.alarm, None)
-        ordered = sorted(values.values())
+            live.pop(self.alarm, None)
+        ordered = sorted(live.values())
         if not ordered:
-            return 0.0
-        if len(ordered) == 2:
-            return sum(ordered) / 2.0
-        return ordered[len(ordered) // 2]
+            return self._last_trusted_mw
+        self._last_trusted_mw = _median(ordered)
+        return self._last_trusted_mw
 
     def acknowledge(self) -> None:
         self.alarm = None
         self.alarm_detail = ""
         for src in self.cusum:
             self.cusum[src] = 0.0
+
+
+def _median(ordered: list[float]) -> float:
+    """Median of an already sorted list.
+
+    The three-source case takes the middle one, as it always did. Two sources
+    take their mean rather than the upper value, which the old index arithmetic
+    would have picked: with a quorum lost the vote has no grounds to prefer
+    either reading, and silently choosing the larger one biases every
+    downstream limit check in the same direction.
+    """
+    if not ordered:
+        return 0.0
+    middle = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[middle]
+    return (ordered[middle - 1] + ordered[middle]) / 2.0
 
 
 def _clamp(value: float, low: float, high: float) -> float:
