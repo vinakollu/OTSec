@@ -307,6 +307,31 @@ class ModbusDevice:
         self._scan_task = asyncio.create_task(self._run_scan_loop())
         log.info("%s listening on %s:%d", self.name, self.host, self.port)
 
+    async def set_reachable(self, reachable: bool) -> None:
+        """Take the device's listening socket down, or bring it back.
+
+        The plant keeps running either way: this severs the link, it does not
+        stop the process. Sockets already accepted stay open, so masters that
+        are connected keep driving the plant while anything trying to reach it
+        afresh fails. That is what a lost link looks like from outside, and it
+        is what makes the scanner's answer worth anything — a device marked
+        down here is one a real probe could not reach, not one a flag said was
+        down.
+        """
+        if reachable:
+            if self._server is None:
+                self._server = await asyncio.start_server(
+                    self._handle_client, self.host, self.port
+                )
+            return
+        if self._server is not None:
+            self._server.close()
+            self._server = None
+
+    @property
+    def reachable(self) -> bool:
+        return self._server is not None
+
     async def stop(self) -> None:
         if self._scan_task is not None:
             self._scan_task.cancel()

@@ -43,6 +43,7 @@ import logging
 import struct
 import time
 from dataclasses import dataclass, field
+from typing import Callable
 
 from ..clock import SimClock
 from ..config import Config
@@ -135,6 +136,7 @@ class DeviceGuardProxy:
         clock: SimClock | None = None,
         enforce: bool = True,
         initial_level_m: float | None = None,
+        listener: "Callable[[dict], None] | None" = None,
     ) -> None:
         self.config = config
         self.map = device_map
@@ -146,6 +148,10 @@ class DeviceGuardProxy:
         self.policy = policy or WirePolicy()
         self.clock = clock or SimClock()
         self.enforce = enforce
+        # Optional tap for the live dashboard. Nothing here waits on it and
+        # nothing it does can change a verdict: it is handed a copy of what the
+        # guard decided, after the decision was taken on the real path.
+        self.listener = listener
 
         self.guard = guard or PhysicsGuard(
             self._adjusted_config(config), initial_level_m=initial_level_m
@@ -280,6 +286,43 @@ class DeviceGuardProxy:
             self.stats.writes_blocked += 1  # counted, not acted on
         return record
 
+    def _emit(self, event: dict) -> None:
+        """Hand one event to the watcher, if there is one. Never raises."""
+        if self.listener is None:
+            return
+        try:
+            self.listener(event)
+        except Exception:  # pragma: no cover - a display must not break the guard
+            log.exception("live listener failed")
+
+    def _emit_frame(self, record: FrameRecord, latency_us: float) -> None:
+        if self.listener is None:
+            return
+        kind = value = None
+        for verdict in record.verdicts:
+            kind = verdict.command.kind.value
+            value = verdict.command.value
+        if not record.forwarded:
+            decision = "block"
+        elif any(v.flagged for v in record.verdicts):
+            decision = "alarm"
+        else:
+            decision = "allow"
+        self._emit({
+            "type": "frame",
+            "t": record.t,
+            "source": record.source,
+            "unit": record.unit_id,
+            "fc": record.function_code,
+            "kind": kind,
+            "value": value,
+            "decision": decision,
+            "rules": record.rule_ids,
+            "wire": record.wire_reason.value if record.wire_reason else None,
+            "detail": record.detail,
+            "latency_us": round(latency_us, 1),
+        })
+
     def _refuse(self, record: FrameRecord, reason: WireDecision, detail: str) -> FrameRecord:
         record.detail = detail
         if self.policy.permits(reason):
@@ -359,10 +402,22 @@ class DeviceGuardProxy:
                     self.frames.append(record)
                     if not record.forwarded:
                         await self._answer(client_writer, frame, EX_ILLEGAL_DATA_VALUE)
-                        self.stats.wire_latency_us.append((time.perf_counter() - started) * 1e6)
+                        latency = (time.perf_counter() - started) * 1e6
+                        self.stats.wire_latency_us.append(latency)
+                        self._emit_frame(record, latency)
                         continue
+                    self._emit_frame(record, (time.perf_counter() - started) * 1e6)
                 elif fc in READ_FUNCTION_CODES:
-                    if not self._read_permitted(frame, source):
+                    permitted = self._read_permitted(frame, source)
+                    self._emit({
+                        "type": "frame", "t": self._now(), "source": source.name,
+                        "unit": frame.unit_id, "fc": fc, "kind": "read", "value": None,
+                        "decision": "allow" if permitted else "block",
+                        "rules": [], "wire": None if permitted else "unauthorised_point",
+                        "detail": "" if permitted else "read outside this device's scope",
+                        "latency_us": round((time.perf_counter() - started) * 1e6, 1),
+                    })
+                    if not permitted:
                         await self._answer(client_writer, frame, EX_ILLEGAL_DATA_VALUE)
                         self.stats.wire_latency_us.append((time.perf_counter() - started) * 1e6)
                         continue
@@ -376,7 +431,9 @@ class DeviceGuardProxy:
                     self.frames.append(record)
                     if not record.forwarded:
                         await self._answer(client_writer, frame, EX_ILLEGAL_FUNCTION)
-                        self.stats.wire_latency_us.append((time.perf_counter() - started) * 1e6)
+                        latency = (time.perf_counter() - started) * 1e6
+                        self.stats.wire_latency_us.append(latency)
+                        self._emit_frame(record, latency)
                         continue
 
                 target_writer.write(frame.encode())
@@ -486,6 +543,11 @@ class DeviceGuardProxy:
             await self._read_frame(reader)
         self.stats.trips_issued += 1
         log.warning("TRIP %s", action)
+        self._emit({
+            "type": "trip", "t": self._now(),
+            "pump": action.pump_cmd_pct, "valve": action.valve_cmd_pct,
+            "reason": action.reason,
+        })
 
     # ------------------------------------------------------------------
     # Lifecycle
