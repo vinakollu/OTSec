@@ -661,6 +661,7 @@ Nothing else needs installing. The scripts add `src/` to the path themselves, an
 figures are drawn without a display.
 
 ```bash
+python scripts/run_live_demo.py
 python scripts/run_live.py
 python scripts/run_demo.py --attack overflow --duration 25
 python scripts/run_eval.py --stealth-sweep
@@ -683,6 +684,22 @@ back to one line per event so a transcript stays readable.
 It runs the tank attack first, then the battery site twice, and the site's
 second run is the one worth watching. Full detail in
 [`docs/live.md`](docs/live.md).
+
+`run_live_demo.py` is the same idea with the script taken out. The stack stands
+up with ordinary traffic flowing and then waits for you. The page draws the
+whole topology — five masters with their source addresses, the guard with a
+lamp per rule, the field device with its tank drawn to scale — and every frame
+the guard judges crosses the wire as a dot in the colour of the verdict it got.
+Three charts fill as the plant moves, and the scanner's device table says what
+is still answering.
+
+Three buttons do the demonstrating. Launch any attack the matrix defines for
+that device. Turn enforcement off and run the same attack again, which puts
+this project's whole method into one gesture: the same plant, the same attack,
+a minute apart, and the level climbing past the line it stopped at the first
+time. Cut the link to the device, which closes its listening socket, and watch
+the scanner work out within three sweeps that nothing is answering while the
+plant carries on running behind it.
 
 `run_demo.py` is the short version of the whole project. It stands up the
 simulated controller, the guard and an attacker driving a stock `pymodbus`

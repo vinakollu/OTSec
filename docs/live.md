@@ -147,6 +147,64 @@ served by a hand-rolled HTTP server over `asyncio.start_server`, bound to
 loopback by default, because the page shows the state of a control system and
 authenticates nobody.
 
+## The interactive view
+
+`run_live.py` plays two scripted scenarios and narrates them. That is the right
+shape for a story you want told the same way twice, and the wrong shape for a
+room with a question in it. The question is always "what happens if", and the
+answer should arrive while somebody is still asking.
+
+`run_live_demo.py` is the other shape. The stack stands up with ordinary
+traffic flowing and then waits. An attack runs when somebody launches one, the
+guard stops enforcing when somebody says so, and the link to the device goes
+down when somebody cuts it. It serves a different page from the same server,
+fed by the same bus, so the two views cannot disagree about what happened.
+
+Three controls carry the argument, and the second is the one worth the trouble.
+
+Launching an attack runs one of the device matrix's attack coroutines, from the
+source address that attack is defined to come from. The page offers whichever
+attacks apply to the device behind the guard, so a drive gateway offers the
+parameter attacks and a PLC does not.
+
+Bypassing the guard leaves it watching and powerless. The counterfactual is the
+whole of this project's method, and it is usually a second column in a table
+read ten minutes apart. Here it is the same plant, the same attack, a minute
+later, with the audience watching the level climb past the line it stopped at
+the first time.
+
+Cutting the link closes the device's listening socket. The plant keeps running
+and the masters already connected keep driving it; what stops is anything
+trying to reach it afresh, which is what a lost link looks like from outside.
+The scanner finds out the way it would in a plant, by failing to get an answer
+three sweeps running, and the device table turns over to DOWN with the probe's
+own reason beside it.
+
+The masters that write stand down while an attack runs. That is not stagecraft:
+it is how the matrix runs them, and the reason is that a supervisory loop left
+writing overwrites the attacker's set-point within a second or two. The attack
+then never reaches the plant and the guard takes credit for a save its victim
+had already made. The page greys those masters and says why, and marks the one
+the attack is coming from as compromised rather than stood down, because that
+station is in use — by somebody else.
+
+### What the page draws
+
+The topology is a canvas: masters on the left with their source addresses, the
+guard in the middle with a lamp per rule, and the field device on the right
+with its tank drawn to scale against its own limits. Every frame the guard
+judges is a dot crossing the wire in the colour of the verdict it got, and a
+blocked one bursts at the guard rather than reaching the device.
+
+Three charts fill as the plant moves: the level with the true value and the
+guard's belief drawn separately, the actuator positions, and frames per second
+coloured by verdict. The colours are the ones the figures in the report use, so
+what an audience watches matches what they later read.
+
+The decision log carries the guard's own words. When supervision trips, the
+line is the finding the rule produced, which is the same string the evaluation
+would have printed.
+
 ## Running it
 
 ```bash
@@ -155,6 +213,10 @@ python scripts/run_live.py --only site     # just the measurement story
 python scripts/run_live.py --no-web        # terminal only
 python scripts/run_live.py --speed 25      # how fast the site scenario plays
 python scripts/run_live.py --hold 120      # keep the page up after the run
+
+python scripts/run_live_demo.py            # the interactive one
+python scripts/run_live_demo.py --device drives
+python scripts/run_live_demo.py --speed 2 --port 9000
 ```
 
 The tank half runs at real speed and cannot be accelerated: the guard's

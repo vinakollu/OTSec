@@ -24,8 +24,9 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
-from typing import Iterable
+from typing import Awaitable, Callable, Iterable
 
 from .bus import EventBus
 from .page import PAGE
@@ -55,10 +56,18 @@ class LiveServer:
         bus: EventBus,
         host: str = "127.0.0.1",
         port: int = 8765,
+        page: str | None = None,
+        on_command: "Callable[[str, dict[str, str]], Awaitable[dict]] | None" = None,
     ) -> None:
         self.bus = bus
         self.host = host
         self.port = port
+        # Both default to what this server has always done. ``page`` lets a
+        # second view be served by the same machinery, and ``on_command`` opens
+        # the one route that lets a page drive the run rather than only watch
+        # it. A server with neither behaves exactly as before.
+        self.page = page if page is not None else PAGE
+        self.on_command = on_command
         self._server: asyncio.AbstractServer | None = None
         self.clients = 0
 
@@ -114,7 +123,9 @@ class LiveServer:
 
         if path == "/":
             await self._send(writer, "200 OK", "text/html; charset=utf-8",
-                             PAGE.encode("utf-8"))
+                             self.page.encode("utf-8"))
+        elif path.startswith("/api/") and self.on_command is not None:
+            await self._command(writer, path[len("/api/"):], query)
         elif path == "/healthz":
             await self._send(writer, "200 OK", "text/plain", b"ok")
         elif path == "/events":
@@ -122,6 +133,19 @@ class LiveServer:
             await self._stream(writer, after)
         else:
             await self._send(writer, "404 Not Found", "text/plain", b"not found")
+
+    async def _command(self, writer: asyncio.StreamWriter, action: str,
+                       query: str) -> None:
+        """One control from the page. A bad one answers, it does not crash."""
+        params = {k: _query_value(query, k)
+                  for k in (p.split("=", 1)[0] for p in query.split("&") if p)}
+        try:
+            result = await self.on_command(action, params)
+        except Exception as exc:
+            log.exception("live command %s failed", action)
+            result = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+        body = json.dumps(result, separators=(",", ":")).encode()
+        await self._send(writer, "200 OK", "application/json", body)
 
     async def _send(
         self, writer: asyncio.StreamWriter, status: str, ctype: str, body: bytes
