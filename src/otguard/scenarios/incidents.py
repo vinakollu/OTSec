@@ -482,9 +482,10 @@ INCIDENTS: tuple[Incident, ...] = (
             "configuration limit rather than a set-point."
         ),
         unmodelled=(
-            "Chemical dosing, and the operator who noticed. This project's tank has no "
-            "equivalent of a residual-chlorine measurement that would reveal a dose "
-            "independently."
+            "The operator who noticed. The tank has no equivalent of a residual-chlorine "
+            "measurement that would reveal a dose independently; the treatment works does, "
+            "and W2 judges a dose ceiling there, but this row is scored against the tank "
+            "evidence below rather than against the works."
         ),
         evidence=(
             Evidence("tank", "setpoint_overdose"),

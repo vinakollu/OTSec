@@ -80,16 +80,17 @@ ATTACKS: tuple[Attack, ...] = (
         "oldsmar_overdose", "Chemical overdose",
         "Somebody on the operator's screen raises the chlorine dose ceiling and "
         "then doses far above it. This is the shape of what happened at a water "
-        "plant in Oldsmar, Florida in 2021, where a dosing set-point was raised "
-        "about a hundredfold.",
+        "plant in Florida in 2021, where a dosing set-point was raised about a "
+        "hundredfold. Who sent that write is still disputed; what a write of "
+        "this shape does to the water is not.",
         "hmi", "supervisory", "HMI-01",
         ((0.0, K.MAX_CHLORINE_DOSE, 11.0), (12.0, K.CHLORINE_DOSE, 9.5)), 600.0,
     ),
     Attack(
         "caustic_overdose", "Caustic overdose",
         "The caustic soda ceiling is raised and the dose pushed up with it. "
-        "Caustic is what Oldsmar's attacker actually touched; too much of it "
-        "makes the water burn and strips metal out of the pipes.",
+        "Caustic soda is the chemical the Florida case actually involved; too "
+        "much of it makes the water burn and strips metal out of the pipes.",
         "hmi", "supervisory", "HMI-01",
         ((0.0, K.MAX_CAUSTIC_DOSE, 60.0), (12.0, K.CAUSTIC_DOSE, 48.0)), 600.0,
     ),
