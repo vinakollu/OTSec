@@ -28,7 +28,7 @@ is the outlier, and B6 names it.
 | Measurements counted | 1 of 3 | 3 of 3 |
 | Source named as lying | none | Megapack telemetry sum |
 
-`scripts/run_live.py --only site` runs both columns, the second as the control.
+`scripts/run_live.py battery` runs both columns, the second as the control.
 `tests/test_scan.py::test_two_stale_measurements_invert_the_majority_vote` is
 the same thing as an assertion.
 
@@ -149,7 +149,7 @@ authenticates nobody.
 
 ## The interactive view
 
-`run_live.py` plays two scripted scenarios and narrates them. That is the right
+`run_live.py` plays one scripted scenario and narrates it. That is the right
 shape for a story you want told the same way twice, and the wrong shape for a
 room with a question in it. The question is always "what happens if", and the
 answer should arrive while somebody is still asking.
@@ -208,15 +208,17 @@ would have printed.
 ## Running it
 
 ```bash
-python scripts/run_live.py                 # tank, then the site twice
-python scripts/run_live.py --only site     # just the measurement story
-python scripts/run_live.py --no-web        # terminal only
-python scripts/run_live.py --speed 25      # how fast the site scenario plays
-python scripts/run_live.py --hold 120      # keep the page up after the run
+python scripts/run_live.py tank            # the tank, over real sockets
+python scripts/run_live.py battery         # the battery site and its control
+python scripts/run_live.py tank --no-web   # terminal only
+python scripts/run_live.py battery --speed 25
+python scripts/run_live.py tank --hold 120 # keep the page up after the run
 
-python scripts/run_live_demo.py            # the interactive one
+python scripts/run_live_demo.py            # the interactive tank
 python scripts/run_live_demo.py --device drives
 python scripts/run_live_demo.py --speed 2 --port 9000
+
+python scripts/run_water.py                # the water treatment works
 ```
 
 The tank half runs at real speed and cannot be accelerated: the guard's
@@ -244,3 +246,14 @@ site's own supervision cycle; at a longer interval it would not be.
 
 The inversion result is one scenario, written by the same person who wrote the
 fix for it.
+
+
+## One site per command
+
+Each site has its own invocation and none of them runs two. `run_live.py` takes
+the site as an argument and will not start without one; `run_live_demo.py` is
+the interactive tank; `run_water.py` is the treatment works. The sites keep
+different time — the tank moves in seconds, the works in tens of minutes, the
+battery site in whatever the ramp takes — and a single command that played one
+after the other produced a transcript in which nobody could say afterwards
+which numbers had belonged to which plant.

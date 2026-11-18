@@ -13,13 +13,16 @@ cannot disagree. The device scanner runs alongside, and on the site half its
 output is wired into the guard's cross-source vote, which is where it stops
 being decoration.
 
-    python scripts/run_live.py                  # tank, then the battery site
-    python scripts/run_live.py --only tank
-    python scripts/run_live.py --only site
-    python scripts/run_live.py --no-web         # terminal only
-    python scripts/run_live.py --port 9000
+    python scripts/run_live.py tank
+    python scripts/run_live.py battery
+    python scripts/run_live.py tank --no-web    # terminal only
+    python scripts/run_live.py tank --port 9000
 
-Two scenarios run, in order.
+One site per run, named on the command line. The sites are on different
+timescales and tell different stories, and a single invocation that plays one
+after the other leaves nobody able to say which numbers belonged to which. The
+water treatment works has its own command, ``scripts/run_water.py``, for the
+same reason.
 
 **The tank.** The real stack over real sockets: a simulated controller, the
 guard proxy in front of it, and an attacker driving a stock ``pymodbus``
@@ -439,10 +442,13 @@ async def main_async(args: argparse.Namespace) -> int:
         if server is not None and not view.tty:
             print(f"live view at {server.url}")
         live = Live(config, bus, view)
-        if args.only in ("tank", "both"):
+        if args.site == "tank":
             results["tank"] = await tank_scenario(live, args.attack, args.duration)
-            await asyncio.sleep(args.pause)
-        if args.only in ("site", "both"):
+        else:
+            # Two runs of the one site: the guard told which measurements are
+            # still arriving, and the same site with the guard not told. That
+            # is one scenario with its own control, not two sites sharing a
+            # command.
             results["site_informed"] = await site_scenario(live, inform_guard=True,
                                                            speed=args.speed)
             await asyncio.sleep(args.pause)
@@ -489,14 +495,15 @@ def _summarise(results: dict[str, dict]) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--only", choices=("tank", "site", "both"), default="both")
+    parser.add_argument("site", choices=("tank", "battery"),
+                        help="which site to run; one per invocation, never both")
     parser.add_argument("--attack", choices=ATTACKS, default="overflow")
     parser.add_argument("--duration", type=float, default=30.0,
                         help="seconds to hold the tank attack (it needs ~20 to do damage)")
     parser.add_argument("--speed", type=float, default=10.0,
                         help="how much faster than real time the site scenario runs")
     parser.add_argument("--pause", type=float, default=2.0,
-                        help="seconds between scenarios, so the result stays on screen")
+                        help="seconds between the battery run and its control")
     parser.add_argument("--hold", type=float, default=0.0,
                         help="seconds to keep the web view up after the run")
     parser.add_argument("--host", default="127.0.0.1")
