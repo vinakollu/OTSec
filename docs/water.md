@@ -21,9 +21,13 @@ example and a poor second one. A treatment works has properties a tank does not:
 
 **The dangerous quantity is a chemical dose, not a position.** A pump is open or
 shut. A dose is a number, and the number that protects the public is stored in
-the same controller an attacker is already writing to. The attack at Oldsmar in
-2021 was a dosing set-point raised about a hundredfold; nothing moved, no alarm
-was configured to care, and an operator happened to be watching the screen.
+the same controller an attacker is already writing to. At a Florida water
+plant in 2021 a dosing set-point was raised about a hundredfold, from roughly
+100 ppm to roughly 11,100 ppm; nothing moved, no alarm was configured to care,
+and an operator happened to be watching the screen. Later reporting raised the
+possibility that it was a plant employee's own action rather than an intrusion
+and the attribution is not settled, which changes who sent the write and not
+what its shape demonstrates.
 
 **The measurement arrives minutes after the command.** Chlorine injected now
 reaches the residual analyser two and a half minutes later, and coagulant takes
@@ -157,8 +161,8 @@ Nine, each the shape of something that has happened.
 
 | | What it does |
 |---|---|
-| Chemical overdose | raises the chlorine ceiling, then doses through it — Oldsmar's shape |
-| Caustic overdose | the same with caustic soda, which is what Oldsmar's attacker touched |
+| Chemical overdose | raises the chlorine ceiling, then doses through it, as in the Florida case |
+| Caustic overdose | the same with caustic soda, the chemical the Florida incident involved |
 | Quietly stop disinfecting | turns the dose down; every instrument reads normal for minutes |
 | Steal the contact time | opens the high-lift pumps so water rushes through the contact tank |
 | Let the mud through | cuts the coagulant; the filters cannot cover for a failed clarifier |
@@ -180,7 +184,7 @@ the guard took credit for a save its victim had already made.
 ## The one number that matters most
 
 Nine hundred simulated seconds of the works running itself — dosing paced to
-flow and turbidity, pumps trimmed to hold the clearwell — produce fifty-five
+flow and turbidity, pumps trimmed to hold the clearwell — produce fifty-seven
 commands across the guard and **none refused**. That is the figure to read
 first. A guard that objects to a plant operating normally has not made the
 works safer, it has taken it off line, and every attack it then catches is
