@@ -661,8 +661,9 @@ Nothing else needs installing. The scripts add `src/` to the path themselves, an
 figures are drawn without a display.
 
 ```bash
+python scripts/run_water.py
 python scripts/run_live_demo.py
-python scripts/run_live.py
+python scripts/run_live.py tank
 python scripts/run_demo.py --attack overflow --duration 25
 python scripts/run_eval.py --stealth-sweep
 python scripts/run_site_eval.py --sweeps
@@ -673,16 +674,21 @@ python scripts/bench_latency.py
 python -m pytest
 ```
 
-`run_live.py` is the one to run first. It stands up the same stack and narrates
-it while it happens, rather than printing a table once the interesting part is
-over. It draws into a terminal, redrawn in place, and serves the same picture to
-a browser at `http://127.0.0.1:8765/`; both read one event stream, so neither
-can show a number the other does not have. `--no-web` skips the browser,
-`--only tank` or `--only site` runs half of it, and outside a terminal it falls
-back to one line per event so a transcript stays readable.
+`run_water.py` is the one to run first. It opens a treatment works on a page:
+eight stages from the river intake to the mains, twenty-two devices across six
+zones, fourteen measurements each drawn against the limit that applies to it,
+and a column that says in ordinary English what the plant just did and why.
+Nine attacks sit on the page, each the shape of a real incident, and the guard
+can be switched between enforcing and watching while one runs. Full detail in
+[`docs/water.md`](docs/water.md).
 
-It runs the tank attack first, then the battery site twice, and the site's
-second run is the one worth watching. Full detail in
+`run_live.py` narrates one scripted site while it happens, rather than printing
+a table once the interesting part is over. It draws into a terminal, redrawn in
+place, and serves the same picture to a browser at `http://127.0.0.1:8765/`;
+both read one event stream, so neither can show a number the other does not
+have. It takes the site as an argument — `tank` or `battery` — and will not
+start without one. `--no-web` skips the browser, and outside a terminal it
+falls back to one line per event so a transcript stays readable. Full detail in
 [`docs/live.md`](docs/live.md).
 
 `run_live_demo.py` is the same idea with the script taken out. The stack stands
@@ -791,12 +797,12 @@ src/otguard/
     web.py             server-sent events over a hand-rolled HTTP server
     page.py            the browser view, self-contained, no CDN
 config/default.yaml    every tunable number, with the reasoning next to it
-scripts/               run_live.py, run_eval.py, run_site_eval.py, run_matrix.py,
+scripts/               run_water.py, run_live.py, run_eval.py, run_site_eval.py,
                        run_demo.py, run_incidents.py, run_opcua.py,
                        bench_latency.py
-tests/                 306 tests and one expected failure
-docs/                  design.md, bess-design.md, devices.md, incidents.md,
-                       opcua.md, live.md, heilmeier.md
+tests/                 361 tests and one expected failure
+docs/                  design.md, bess-design.md, water.md, devices.md,
+                       incidents.md, opcua.md, live.md, heilmeier.md
 ```
 
 ## More detail
@@ -806,6 +812,11 @@ why each rule is shaped the way it is.
 
 [`docs/bess-design.md`](docs/bess-design.md) covers the battery site: physics,
 rules B1 to B8, the protocols, the results, and where it fails.
+
+[`docs/water.md`](docs/water.md) covers the treatment works: the eight stages
+and the three places the model had to be made harsher before an attack on it
+meant anything, the six zones and the one guarded conduit, rules W1 to W8, the
+nine attacks, and the fifty-five ordinary commands that have to get through.
 
 [`docs/devices.md`](docs/devices.md) covers the senders and receivers: what
 changes between device classes, what the wire policy is for, and where those
