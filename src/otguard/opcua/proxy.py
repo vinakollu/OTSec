@@ -60,13 +60,17 @@ from asyncua.ua import ua_binary
 
 from ..clock import SimClock
 from ..config import Config
-from ..guard import Command, Observation, PhysicsGuard, Verdict
-from ..guard.types import RuleFinding
-from ..guard.guard import ProtectiveAction, SupervisionEvent
+from ..bess.types import (
+    BreakerState, MeasurementSource, PackReport, SiteCommand, SiteObservation,
+)
+from ..guard.types import RuleFinding, Verdict  # noqa: F401
+from ..guard.site_guard import (
+    SiteGuard, SiteProtectiveAction, SiteSupervisionEvent,
+)
 from ..guard.wire import PointRole, WireDecision, WirePolicy
 from .certs import CertSet
 from .framing import BODY_OFFSET, Message, SecurityMode, Visibility, frame
-from .nodes import LEVEL_POINT, NodeMap
+from .nodes import LIMIT_POINT, POWER_POINT, NodeMap
 
 log = logging.getLogger(__name__)
 
@@ -161,11 +165,10 @@ class OpcUaGuardProxy:
         listen_host: str = "127.0.0.1",
         listen_port: int = 4840,
         certs: CertSet | None = None,
-        guard: PhysicsGuard | None = None,
+        guard: SiteGuard | None = None,
         policy: WirePolicy | None = None,
         clock: SimClock | None = None,
         enforce: bool = True,
-        initial_level_m: float | None = None,
         poll_period_s: float = 0.5,
         blind_rate_window_s: float = 2.0,
         blind_rate_budget: int = 24,
@@ -191,22 +194,31 @@ class OpcUaGuardProxy:
         self.blind_rate_window_s = blind_rate_window_s
         self.blind_rate_budget = blind_rate_budget
 
-        self.guard = guard or PhysicsGuard(config, initial_level_m=initial_level_m)
+        self.guard = guard or SiteGuard(config)
         self.stats = ProxyStats()
         self.writes: list[WriteRecord] = []
-        self.events: list[SupervisionEvent] = []
+        self.events: list[SiteSupervisionEvent] = []
         self.visibility = Visibility()
 
         self._server: asyncio.AbstractServer | None = None
         self._supervisor: asyncio.Task | None = None
         self._poll_client: Client | None = None
         self._nodes: dict[str, object] = {}
-        self._level_m: float | None = None
+        self._poi_mw: float | None = None
+        self._limit_mw: float | None = None
+        self._fleet_soc: float | None = None
+        self._hottest_c: float | None = None
+        self._breaker_closed = True
+        self._anchored = False
+        # One vantage point, one measurement. Saying so is the whole
+        # difference between a guard that knows what it cannot check and
+        # one that thinks three instruments agreed with each other.
+        self.guard.set_live_sources({MeasurementSource.POI_METER})
 
         self.channels: list[Channel] = []
         self.first_detection_t: float | None = None
         self._readings: deque[tuple[float, float]] = deque(maxlen=16)
-        # Rearm is tracked per direction, for the reason PhysicsGuard already
+        # Rearm is tracked per direction, for the reason the guard already
         # had to learn: shutting the pump to stop an overflow leaves the outlet
         # open, which is itself a dry-out configuration, and a single timer
         # swallows the trip that would catch it. This started out as one
@@ -290,7 +302,9 @@ class OpcUaGuardProxy:
 
         record.value = described[-1][1]
         for point, value in described:
-            verdict = self.guard.check(Command(t=now, kind=point.kind, value=value, source="opcua"))
+            verdict = self.guard.check(SiteCommand(
+                t=now, kind=point.kind, value=value, source="opcua",
+                zone="control", conduit="scada_to_control", protocol="opc_ua"))
             record.verdicts.append(verdict)
 
         record.blocked = any(not v.allowed for v in record.verdicts)
@@ -581,17 +595,26 @@ class OpcUaGuardProxy:
         try:
             while True:
                 try:
-                    level = float(await self._nodes[LEVEL_POINT].read_value())
+                    poi = float(await self._nodes[POWER_POINT].read_value())
+                    limit = float(await self._nodes[LIMIT_POINT].read_value())
+                    self._fleet_soc = float(
+                        await self._nodes["Site.FleetSoc"].read_value())
+                    self._hottest_c = float(
+                        await self._nodes["Site.HottestTempC"].read_value())
+                    self._breaker_closed = float(
+                        await self._nodes["Site.Breaker"].read_value()) >= 0.5
                 except Exception:
                     await self.clock.sleep(self.poll_period_s)
                     continue
                 now = self._now()
-                self._level_m = level
+                self._poi_mw = poi
+                self._limit_mw = limit
+                await self._anchor()
                 self.stats.polls += 1
-                self._readings.append((now, level))
+                self._readings.append((now, poi))
 
-                event = self.guard.observe(Observation(now, level))
-                if (self.guard.estimator.integrity_alarm
+                event = self.guard.observe(self._observe(now, poi))
+                if (self.guard.voter.alarm is not None
                         and self.stats.integrity_alarm_t is None):
                     self.stats.integrity_alarm_t = now
                 if event is not None:
@@ -605,50 +628,112 @@ class OpcUaGuardProxy:
                         if self.enforce and event.action is not None:
                             await self._apply_trip(event)
                 if not self.mode.body_is_readable:
-                    await self._blind_supervise(now, level)
+                    await self._blind_supervise(now, poi)
                 await self.clock.sleep(self.poll_period_s)
         except asyncio.CancelledError:
             raise
 
-    async def _blind_supervise(self, t: float, level: float) -> None:
+    async def _anchor(self) -> None:
+        """Read the standing order once, before judging anything against it.
+
+        A guard spliced into a running site has not seen the command that put
+        the site where it is. Left at zero, its idea of what has been ordered
+        says the fleet is idle, and the first ordinary dispatch then looks
+        like the whole site starting from a standstill: the ramp rule
+        objected to seventy of seventy-four honest writes, which is the worst
+        thing a guard can do and the reason this is checked rather than
+        assumed.
+
+        Reading the order is not the same as trusting the plant. From here the
+        estimator is driven by commands this guard has accepted, which is what
+        makes it independent evidence about what the units are doing.
+        """
+        if self._anchored:
+            return
+        self._anchored = True
+        dispatch = 0.0
+        with contextlib.suppress(Exception):
+            node = self._nodes.get("Site.DispatchSetpoint")
+            if node is not None:
+                dispatch = float(await node.read_value())
+        share = dispatch / max(len(self.guard.estimators), 1)
+        for est in self.guard.estimators.values():
+            est.note_power(share)
+
+    def _observe(self, t: float, poi_mw: float) -> SiteObservation:
+        """One scan of telemetry, as this vantage point can actually see it.
+
+        A bump-in-the-wire on an OPC UA session reads what the server
+        publishes and nothing else. The site's three independent measurements
+        of its own output are not three nodes on this endpoint: they are three
+        instruments on three conduits, and a device in this position sees the
+        one figure the server chose to expose.
+
+        So the cross-source vote is told it has one source rather than being
+        handed the same number three times, which would look like three
+        instruments agreeing and would be a lie about what the guard knows.
+        It reports lost quorum instead, which is the honest answer and is the
+        same answer the storage site's own scanner produces when two links
+        drop. The per-unit reports are synthesised from the published fleet
+        figures for the same reason: this endpoint exposes a fleet average,
+        not sixteen units, and the energy-balance rule is told exactly that.
+        """
+        soc = (self._fleet_soc if self._fleet_soc is not None else 0.0) / 100.0
+        temp = self._hottest_c if self._hottest_c is not None else 25.0
+        share = poi_mw / max(len(self.guard.estimators), 1)
+        packs = tuple(
+            PackReport(device=device, p_mw=share, q_mvar=0.0, soc=soc, temp_c=temp)
+            for device in self.guard.estimators
+        )
+        return SiteObservation(
+            t=t, packs=packs, poi_meter_mw=poi_mw, relay_mw=poi_mw,
+            breaker=(BreakerState.CLOSED if self._breaker_closed
+                     else BreakerState.OPEN),
+        )
+
+    async def _blind_supervise(self, t: float, poi_mw: float) -> None:
         """An envelope check from the reading alone, for traffic it cannot read.
 
         This exists because of what the experiment measured. The guard's normal
-        lookahead integrates a model forward under the commands it has
-        forwarded. On an encrypted channel it forwards commands it never read,
-        so that model says both actuators are shut. When the level then rises,
-        the consistency check reaches the only conclusion its premise allows:
-        the transmitter is lying. It goes open loop, freezes its estimate at the
-        last value it believed, and watches the tank overflow while holding a
-        CUSUM in the thousands and a level estimate of 0.99 m.
+        reasoning works forward from the commands it has accepted. On an
+        encrypted channel it accepts commands it never read, so its picture of
+        the fleet says every unit is where it last saw it. When the power at
+        the connection then climbs, the cross-source check reaches the only
+        conclusion its premise allows: an instrument must be lying. It accuses
+        a healthy meter and goes on believing a site that is not there.
 
-        That is not a tuning problem. The premise "if the model and the sensor
-        disagree, suspect the sensor" is sound only for a guard that sees every
-        command, and an encrypted channel is exactly the case where it does not.
+        That is not a tuning problem. The premise "if what I expect and what I
+        measure disagree, suspect the measurement" is sound only for a guard
+        that sees every command, and an encrypted channel is exactly the case
+        where it does not.
 
-        So when the guard knows it is command-blind it stops reasoning from the
-        model and falls back to the reading and the reading's own slope. No
-        model, no commands, no attribution: a trip when the measured level is
-        heading out of the envelope. It is the weakest protection in the project
-        and the only one that survives an encrypted channel, and the lead time
-        it gets is worth measuring against what the readable modes get, because
-        it has to wait for the process to actually start moving.
+        So when the guard knows it is command-blind it stops reasoning from
+        accepted commands and falls back to the reading and the reading's own
+        slope. No model, no commands, no attribution: a trip when the measured
+        export is heading out of the envelope. It is the weakest protection in
+        the project and the only one that survives an encrypted channel, and
+        the lead time it gets is worth measuring against what the readable
+        modes get, because it has to wait for the power to actually move.
         """
         cfg = self.config.guard.supervision
         if not cfg.enabled:
             return
-        high = self.config.safety.level_max_m - self.config.guard.prediction.margin_m
-        low = self.config.safety.level_min_m + self.config.guard.prediction.margin_m
+        # Against the transformer, not against the export limit. The limit is
+        # a number on the wire that an attacker may already have moved; the
+        # transformer rating is iron.
+        rating = self.config.bess.site.poi_rating_mw
+        high = rating * 0.96
+        low = -rating * 0.96
 
         slope = 0.0
         if len(self._readings) >= 2:
-            t0, l0 = self._readings[0]
+            t0, p0 = self._readings[0]
             if t - t0 > 1e-6:
-                slope = (level - l0) / (t - t0)
-        reach = level + slope * cfg.horizon_s
+                slope = (poi_mw - p0) / (t - t0)
+        reach = poi_mw + slope * cfg.horizon_s
 
-        breach_high = level > high or reach > high
-        breach_low = level < low or reach < low
+        breach_high = poi_mw > high or reach > high
+        breach_low = poi_mw < low or reach < low
         if not (breach_high or breach_low):
             return
 
@@ -659,37 +744,34 @@ class OpcUaGuardProxy:
         self._blind_trip_t[direction] = t
         self._note_detection(t)
         detail = (
-            f"measured level {level:.3f} m moving at {slope * 1000:+.0f} mm/s reaches "
-            f"{reach:.3f} m within {cfg.horizon_s:g}s (limit "
-            f"{high if breach_high else low:.2f} m); the channel is encrypted, so "
-            "there is no command to attribute this to and none to refuse"
+            f"measured export {poi_mw:.2f} MW moving at {slope:+.3f} MW/s reaches "
+            f"{reach:.2f} MW within {cfg.horizon_s:g}s (transformer "
+            f"{rating:.0f} MVA); the channel is encrypted, so there is no "
+            "command to attribute this to and none to refuse"
         )
-        finding = RuleFinding("R3b", "blind supervision", detail)
-        action = ProtectiveAction(
-            t=t,
-            pump_cmd_pct=0.0 if breach_high else None,
-            valve_cmd_pct=0.0 if breach_low else None,
-            reason=detail,
-        )
-        event = SupervisionEvent(t=t, findings=[finding], action=action)
+        finding = RuleFinding("B3b", "blind supervision", detail)
+        action = SiteProtectiveAction(t=t, reason=detail)
+        event = SiteSupervisionEvent(t=t, findings=[finding], action=action)
         self.events.append(event)
         if self.enforce:
             await self._apply_trip(event)
             self.stats.blind_trips += 1
 
-    async def _apply_trip(self, event: SupervisionEvent) -> None:
+    async def _apply_trip(self, event: SiteSupervisionEvent) -> None:
         action = event.action
         if action is None:
             return
-        for identifier, value in (
-            ("Tank.PumpCommand", action.pump_cmd_pct),
-            ("Tank.ValveCommand", action.valve_cmd_pct),
-        ):
-            if value is None:
-                continue
+        # The only thing a bump-in-the-wire can do to a site it cannot read
+        # is stop it dispatching. It writes the fleet set-point to zero on its
+        # own session, which is a command the device obeys like any other.
+        with contextlib.suppress(Exception):
+            await self._nodes["Site.DispatchSetpoint"].write_value(
+                ua.DataValue(ua.Variant(0.0, ua.VariantType.Double))
+            )
+        if action.open_breaker:
             with contextlib.suppress(Exception):
-                await self._nodes[identifier].write_value(
-                    ua.DataValue(ua.Variant(float(value), ua.VariantType.Double))
+                await self._nodes["Site.Breaker"].write_value(
+                    ua.DataValue(ua.Variant(0.0, ua.VariantType.Double))
                 )
         self.stats.trips_issued += 1
 

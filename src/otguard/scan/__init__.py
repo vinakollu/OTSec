@@ -9,7 +9,7 @@ event, it is a reduction in what the guard can prove.
 
 from .probe import CallbackProbe, Evidence, Probe, ProbeResult, ModbusProbe, TcpProbe
 from .scanner import DeviceStatus, Reachability, ScanTarget, ScanTransition, Scanner
-from .targets import site_targets, tank_targets
+from .targets import site_targets
 
 __all__ = [
     "CallbackProbe",
@@ -24,5 +24,4 @@ __all__ = [
     "Scanner",
     "TcpProbe",
     "site_targets",
-    "tank_targets",
-]
+    ]

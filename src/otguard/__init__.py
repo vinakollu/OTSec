@@ -5,16 +5,22 @@ physics of the controlled process as an admission policy on commands. Its
 authority comes from the plant's dynamics, which an attacker on the operator
 station cannot renegotiate.
 
+Two plants are modelled. A grid storage site, where the quantity that matters
+is measured three times by three different instruments, and a water treatment
+works, where the quantity that decides whether the water is safe is not
+measured at all.
+
 Typical use::
 
     from otguard.config import load_config
-    from otguard.guard import PhysicsGuard, Command, CommandKind, Observation
+    from otguard.guard import SiteGuard
+    from otguard.bess.types import SiteCommand, SiteCommandKind
 
-    guard = PhysicsGuard(load_config())
-    guard.observe(Observation(t, level_m))          # every process read
-    verdict = guard.check(Command(t, CommandKind.PUMP, 100.0))
+    guard = SiteGuard(load_config())
+    guard.observe(observation)                      # every scan of telemetry
+    verdict = guard.check(SiteCommand(t, SiteCommandKind.SITE_POWER, 30.0))
     if verdict.allowed:
-        forward_to_plc(...)
+        forward_to_controller(...)
 
 See ``docs/design.md`` for the threat model and rule rationale.
 """

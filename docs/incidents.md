@@ -49,7 +49,7 @@ stays empty and says why.
 
 Each incident points at evidence that already exists somewhere in the project
 rather than carrying a copy of its own. A row names a tank scenario, a
-storage-site scenario, a sender and receiver pair from the device matrix, or a
+storage-site scenario, a treatment-works attack, or a
 cell of the OPC UA experiment, and `scripts/run_incidents.py` runs whichever of
 those it names.
 
@@ -90,7 +90,7 @@ What catches it is that the number is above the top of the tank.
 | Pieces of evidence run | 21 |
 
 The last two rows of the detection block are kept apart for the reason
-`docs/devices.md` already gives. An access check that stops an attack is worth
+the results already give. An access check that stops an attack is worth
 having and is not evidence for the claim this project makes, and reporting the
 two together inflates the number that matters. The one incident carried by the
 access policy alone is the Unitronics intrusion, where the attack is a write
@@ -114,7 +114,7 @@ reason about until it lands.
 
 The warning times are seconds between the guard's first objection and the
 moment the process left its envelope in the counterfactual run. Where a row has
-none, the evidence for it came from the device matrix or the OPC UA
+none, the evidence for it came from the treatment works or the OPC UA
 experiment, neither of which records that quantity.
 
 Stuxnet is the row to look at twice. The scenario derived from it is detected
@@ -124,6 +124,15 @@ link a bump-in-the-wire could have been on. Reading that row as a hit is the
 mistake this whole table exists to make harder.
 
 ## Where the facts in this file came from
+
+Five of the twelve rows now have no evidence behind them, and that is the
+honest state rather than a gap to be filled. Stuxnet ran on the controllers
+and Triton on a safety system: neither is anywhere a bump-in-the-wire sits.
+Night Dragon took documents and Havex inventoried servers, so neither has a
+command for a plausibility rule to judge. The German steel mill report does
+not say what was written, to what, or whether a command was issued at all,
+and building a scenario with that incident's name on it would be presenting
+an invention as evidence.
 
 Every account here is public reporting as the author understood it, and none of
 it has been checked against primary sources. The dates and the mechanisms are

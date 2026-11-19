@@ -1,6 +1,6 @@
 """Datatypes exchanged between the protocol layer, the rules and the evaluator.
 
-Keeping these protocol-agnostic is what lets the same ``PhysicsGuard`` run
+Keeping these protocol-agnostic is what lets the same guard run
 in-process under the evaluation harness and behind a real Modbus proxy without
 a line of rule code changing.
 """

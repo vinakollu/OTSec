@@ -21,8 +21,7 @@ from dataclasses import dataclass
 from asyncua import Client, ua
 
 from ..clock import SimClock
-from ..guard.types import CommandKind
-from ..scenarios.base import LevelController
+from ..bess.types import SiteCommandKind
 from .certs import MASTER_URI, CertSet
 from .framing import SecurityMode
 from .nodes import NAMESPACE_URI
@@ -59,9 +58,9 @@ async def open_client(url: str, mode: SecurityMode, certs: CertSet | None,
 
 #: Which node each writable process variable lives on.
 NODE_FOR_KIND = {
-    CommandKind.PUMP: "Tank.PumpCommand",
-    CommandKind.VALVE: "Tank.ValveCommand",
-    CommandKind.SETPOINT: "Tank.LevelSetpoint",
+    SiteCommandKind.SITE_POWER: "Site.DispatchSetpoint",
+    SiteCommandKind.POI_LIMIT: "Site.ExportLimit",
+    SiteCommandKind.BREAKER: "Site.Breaker",
 }
 
 
@@ -117,37 +116,34 @@ async def namespace_index(client: Client) -> int:
 # ----------------------------------------------------------------------
 async def operator(client: Client, clock: SimClock, stats: MasterStats,
                    duration_s: float, ns: int = 2,
-                   valve_pct: float = 30.0, period_s: float = 2.0,
+                   fraction: float = 0.45, period_s: float = 2.0,
+                   ramp_mw_s: float = 0.8,
                    stand_down: tuple[float, float] | None = None,
                    recovery_from: float | None = None,
                    recovery_stats: MasterStats | None = None) -> None:
-    """An operator station holding a level, the way a supervisory loop does.
+    """A site controller dispatching against the connection agreement.
 
     Three things here are load-bearing.
 
-    It closes the loop. An earlier version held a fixed pump command, which is
-    not a steady state — the tank filled from 0.95 m to 1.65 m over the episode
-    and the guard was right to object. Measuring that as a false alarm would
-    have been measuring a bad client.
+    It dispatches to a fraction of the export limit rather than to a fixed
+    number of megawatts, which is what a site controller does: the limit is
+    the contract and the schedule is written against it.
 
-    It reads its target off the device rather than holding it internally, so a
-    write to the set-point node changes what this loop aims at. That is what
-    makes a set-point attack an attack: the damage is done by the plant's own
-    control, working correctly, against a target it was handed.
+    It reads that limit off the device rather than holding it internally, so a
+    write to the limit node changes what this loop aims at. That is what makes
+    a limit attack an attack: the damage is done by the site's own control,
+    working correctly, against a figure it was handed. Oldsmar's shape, on a
+    battery.
 
-    It stands down during ``stand_down``. Under this project's threat model the
-    attacker has the operator station, so the legitimate loop is not also using
-    it. Leaving it running means the honest loop fights the attack for the same
-    actuator and neutralises it — the attack is then stopped by its victim
-    rather than by the guard, which flatters the guard without anyone noticing.
-    The loop comes back when the window closes, and whether it can still write
-    at that point is the measurement: a guard that refused by cutting the
-    channel has also cut the operator's way back in.
+    It stands down during ``stand_down``. Under this project's threat model
+    the attacker has the station, so the legitimate loop is not also using it.
+    Leaving it running means the honest loop fights the attack for the same
+    set-point and neutralises it — the attack is then stopped by its victim
+    rather than by the guard, which flatters the guard without anyone
+    noticing. The loop comes back when the window closes, and whether it can
+    still write at that point is the measurement: a guard that refused by
+    cutting the channel has also cut the operator's way back in.
     """
-    controller = LevelController(
-        setpoint_m=0.95, valve_pct=valve_pct, write_period_s=period_s
-    )
-    controller.reset()
     # Both windows are offsets from the moment this client starts, not clock
     # readings. The clock has already been running for the handshake and the
     # warm-up by the time the episode begins, so comparing against it directly
@@ -155,74 +151,78 @@ async def operator(client: Client, clock: SimClock, stats: MasterStats,
     # never writes at all.
     start = clock.now()
     end = start + duration_s
+    held = 0.0
+    with contextlib.suppress(Exception):
+        held = float(await _node(client, "Site.DispatchSetpoint", ns).read_value())
     while clock.now() < end:
         now = clock.now() - start
         if stand_down is not None and stand_down[0] <= now <= stand_down[1]:
             await clock.sleep(period_s)
             continue
-        level = setpoint = None
-        try:
-            level = float(await _node(client, "Tank.Level", ns).read_value())
-            setpoint = float(await _node(client, "Tank.LevelSetpoint", ns).read_value())
-        except Exception:
-            pass
-        # After the attack window the operator is trying to get the plant back.
+        limit = None
+        with contextlib.suppress(Exception):
+            limit = float(await _node(client, "Site.ExportLimit", ns).read_value())
+        # After the attack window the operator is trying to get the site back.
         # Whether those writes land is counted separately, because it is a
         # different question from whether ordinary traffic is refused.
         into = stats
         if (recovery_stats is not None and recovery_from is not None
                 and now >= recovery_from):
             into = recovery_stats
-        if level is not None:
-            if setpoint is not None:
-                controller.set_setpoint(setpoint)
-            for scheduled in controller.update(clock.now(), level):
-                identifier = NODE_FOR_KIND.get(scheduled.kind)
-                if identifier is None or scheduled.kind is CommandKind.SETPOINT:
-                    continue
-                into.attempted += 1
-                if await _write(client, identifier, scheduled.value, ns):
-                    into.accepted += 1
+        if limit is not None:
+            target = limit * fraction
+            # Walk toward the target at a rate the grid code allows rather
+            # than stepping to it. A site controller ramps; one that writes
+            # its whole schedule in a single set-point is asking for a jump
+            # of several megawatts in one scan, and a rule that let that
+            # through would have nothing to say about the attack that does
+            # the same thing on purpose.
+            step = ramp_mw_s * period_s
+            held = max(held - step, min(held + step, target))
+            into.attempted += 1
+            if await _write(client, "Site.DispatchSetpoint", held, ns):
+                into.accepted += 1
         await clock.sleep(period_s)
 
 
 # ----------------------------------------------------------------------
 # The attacks
 # ----------------------------------------------------------------------
-async def overflow(client: Client, clock: SimClock, stats: MasterStats,
-                   ns: int = 2, hold_s: float = 70.0) -> None:
-    """Shut the outlet, run the inlet flat out, wait.
+async def export_over_limit(client: Client, clock: SimClock, stats: MasterStats,
+                            ns: int = 2, hold_s: float = 70.0) -> None:
+    """Dispatch the fleet past the grid connection, and wait.
 
-    Both values are inside the equipment rating and nothing about either write
-    is anomalous. Only the consequence is, which is the argument for physics
-    rules in the first place, and it is also the one attack a blind guard can
-    still catch — because the consequence is in the level it polls itself.
+    The value is inside what the batteries can produce and nothing about the
+    write is anomalous. Only the consequence is, which is the argument for
+    physics rules in the first place, and it is also the one attack a blind
+    guard can still catch — because the consequence is in the power it polls
+    itself.
     """
-    for identifier, value in (("Tank.ValveCommand", 0.0), ("Tank.PumpCommand", 100.0)):
-        stats.attempted += 1
-        if await _write(client, identifier, value, ns):
-            stats.accepted += 1
+    stats.attempted += 1
+    if await _write(client, "Site.DispatchSetpoint", 30.0, ns):
+        stats.accepted += 1
     await clock.sleep(hold_s)
 
 
-async def setpoint_jump(client: Client, clock: SimClock, stats: MasterStats,
-                        ns: int = 2, hold_s: float = 70.0) -> None:
-    """Raise the level set-point above the tank, the way Oldsmar raised a dose.
+async def limit_tamper(client: Client, clock: SimClock, stats: MasterStats,
+                       ns: int = 2, hold_s: float = 70.0) -> None:
+    """Raise the export limit, the way Oldsmar's set-point was raised.
 
-    The write is one number to one node and it moves no actuator by itself: it
-    changes what the control loop will aim for. A readable channel makes this a
-    range check. An encrypted one makes it invisible, and process supervision
+    The write is one number to one node and it moves no megawatt by itself: it
+    changes what the site controller will aim for, and the controller does the
+    rest correctly. A readable channel makes this a range check against the
+    transformer. An encrypted one makes it invisible, and process supervision
     cannot recover it, because nothing has happened yet.
     """
     stats.attempted += 1
-    if await _write(client, "Tank.LevelSetpoint", 1.95, ns):
+    if await _write(client, "Site.ExportLimit", 45.0, ns):
         stats.accepted += 1
     await clock.sleep(hold_s)
 
 
 async def write_flood(client: Client, clock: SimClock, stats: MasterStats,
                       ns: int = 2, writes: int = 200, period_s: float = 0.05) -> None:
-    """Hammer the command node far faster than any operator station writes.
+    """Hammer the dispatch node far faster than any site controller writes.
 
     The only attack here whose signature survives encryption, because the
     signature is the arrival rate and no security mode hides that.
@@ -230,7 +230,7 @@ async def write_flood(client: Client, clock: SimClock, stats: MasterStats,
     misses = 0
     for i in range(writes):
         stats.attempted += 1
-        if await _write(client, "Tank.PumpCommand", 50.0 + (i % 5), ns):
+        if await _write(client, "Site.DispatchSetpoint", 8.0 + (i % 5), ns):
             stats.accepted += 1
             misses = 0
         else:
@@ -240,20 +240,21 @@ async def write_flood(client: Client, clock: SimClock, stats: MasterStats,
         await clock.sleep(period_s)
 
 
-async def valve_hammer(client: Client, clock: SimClock, stats: MasterStats,
-                       ns: int = 2, cycles: int = 40, period_s: float = 0.2) -> None:
-    """Cycle the outlet valve to generate pressure transients.
+async def breaker_hammer(client: Client, clock: SimClock, stats: MasterStats,
+                         ns: int = 2, cycles: int = 40, period_s: float = 0.2) -> None:
+    """Cycle the main breaker.
 
-    Every value is in range and the level barely moves. This tank models level
-    and not pressure, so there is no damage flag to raise either — the pairs it
-    produces are evidence about detection and none about damage, exactly as in
-    the Modbus matrix. Its purpose here is to be the attack that a guard with
-    no view of the commands cannot see at all.
+    Every value is legal and the power barely moves, because this model only
+    damages switchgear on a close that is out of synchronism and the grid does
+    not drift inside an episode. The pairs it produces are evidence about
+    detection and none about damage, exactly as the valve attack was. Its
+    purpose here is to be the attack a guard with no view of the commands
+    cannot see at all.
     """
     misses = 0
     for i in range(cycles):
         stats.attempted += 1
-        if await _write(client, "Tank.ValveCommand", 100.0 if i % 2 == 0 else 0.0, ns):
+        if await _write(client, "Site.Breaker", 0.0 if i % 2 == 0 else 1.0, ns):
             stats.accepted += 1
             misses = 0
         else:
@@ -265,19 +266,19 @@ async def valve_hammer(client: Client, clock: SimClock, stats: MasterStats,
 
 async def parameter_tamper(client: Client, clock: SimClock, stats: MasterStats,
                            ns: int = 2, hold_s: float = 70.0) -> None:
-    """Raise the pump's maximum-speed parameter, then command a legal speed.
+    """Raise the ramp limit, then dispatch a figure that is in range.
 
-    The speed reference never leaves its range. What changed is what the range
-    means, which is the drive-gateway attack from the Modbus matrix carried over
-    to a node that announces its own engineering unit and is no safer for it.
+    The set-point never leaves its range. What changed is how fast the site is
+    allowed to get there, and a site that slams its output around moves the
+    frequency for everybody connected nearby. It is a write to a node that
+    announces its own engineering unit and is no safer for it.
     """
     stats.attempted += 1
-    if await _write(client, "Tank.PumpMaxSpeed", 180.0, ns):
+    if await _write(client, "Site.RampLimit", 40.0, ns):
         stats.accepted += 1
-    for identifier, value in (("Tank.ValveCommand", 0.0), ("Tank.PumpCommand", 95.0)):
-        stats.attempted += 1
-        if await _write(client, identifier, value, ns):
-            stats.accepted += 1
+    stats.attempted += 1
+    if await _write(client, "Site.DispatchSetpoint", 19.0, ns):
+        stats.accepted += 1
     await clock.sleep(hold_s)
 
 
@@ -325,14 +326,18 @@ class AttackSpec:
 
 
 SPECS: dict[str, AttackSpec] = {
-    "overflow": AttackSpec(overflow, 70.0, True, "contends for the pump and the valve"),
-    "setpoint_jump": AttackSpec(setpoint_jump, 70.0, False,
-                                "the loop has to obey the tampered target"),
-    "write_flood": AttackSpec(write_flood, 70.0, True, "contends for the pump"),
-    "valve_hammer": AttackSpec(valve_hammer, 70.0, True, "contends for the valve"),
+    "export_over_limit": AttackSpec(export_over_limit, 70.0, True,
+                                    "contends for the dispatch set-point"),
+    "limit_tamper": AttackSpec(limit_tamper, 70.0, False,
+                               "the loop has to obey the tampered limit"),
+    "write_flood": AttackSpec(write_flood, 70.0, True,
+                              "contends for the dispatch set-point"),
+    "breaker_hammer": AttackSpec(breaker_hammer, 70.0, True,
+                                 "contends for the breaker"),
     "parameter_tamper": AttackSpec(parameter_tamper, 70.0, True,
-                                   "contends for the pump, through its scaling"),
-    "recon_browse": AttackSpec(recon_browse, 70.0, False, "reads only; nothing to contend for"),
+                                   "contends for the dispatch, through its ramp"),
+    "recon_browse": AttackSpec(recon_browse, 70.0, False,
+                               "reads only; nothing to contend for"),
 }
 
 #: Kept for callers that only want the coroutines.

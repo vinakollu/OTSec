@@ -1,5 +1,13 @@
 # What encryption costs the guard
 
+> **These tables were measured against the storage tank.** The experiment now
+> runs against the storage site, so every number below is from a plant that is
+> no longer in the project. They are left here because the *shapes* they show
+> — what each security mode leaves readable, and how the guard fails when it
+> cannot read commands — carry over, and because deleting them would lose the
+> record of what was measured. Regenerate against the site with
+> `python scripts/run_opcua.py`, which writes to `results/opcua/`.
+
 Everything else in this project guards a protocol with no security at all.
 Modbus TCP has no authentication, no integrity and no confidentiality, so a
 device sitting on the wire can read every frame, and the guard's access to the
@@ -13,7 +21,7 @@ this project has been resting on: a client and a server negotiate a security
 mode, and that negotiation decides how much of their conversation anybody else
 can read.
 
-So this is the same guard, the same attacks and the same tank, run three times,
+So this is the same guard, the same attacks and the same storage site, run three times,
 changing only that setting.
 
 ## The three modes, and what each one leaves the guard
@@ -50,21 +58,21 @@ first kind is wrong without knowing it.
 ## What survived, and what the measurement changed
 
 The part of this project that does not read anyone else's traffic is the
-supervisor. The guard polls the level on a session of its own, keeps a state
+supervisor. The guard polls the export power on a session of its own, keeps a state
 estimate, looks a few seconds ahead and trips the plant when the standing order
 is heading out of the envelope. None of that needs visibility into the operator
-station's conversation, so the expectation going in was that command-level
-authority would be lost and process-level supervision would survive intact.
+station's conversation, so the expectation going in was that command-export power
+authority would be lost and process-export power supervision would survive intact.
 
 That expectation was wrong, and finding out how was the most useful thing this
 experiment did.
 
 The lookahead integrates a model forward under the commands the guard has
 forwarded. On an encrypted channel it has forwarded commands it never read, so
-its model says both actuators are shut. When the level then rose, the
+its model says both actuators are shut. When the export power then rose, the
 consistency check reached the only conclusion its premise allows: the
 transmitter must be lying. It went open loop, froze its estimate at 0.99 m, and
-watched the tank fill to 2.00 m while holding a CUSUM above 20,000 and
+watched the storage site fill to 2.00 m while holding a CUSUM above 20,000 and
 reporting a sensor-integrity alarm.
 
 That is not a tuning problem. "If the model and the sensor disagree, suspect the
@@ -72,7 +80,7 @@ sensor" is sound only for a guard that sees every command, and an encrypted
 channel is exactly the case where it does not.
 
 So the proxy now carries a second supervisor that runs only when the guard knows
-it is command-blind. It reads the level and the level's own slope, predicts
+it is command-blind. It reads the export power and the export power's own slope, predicts
 forward with no model and no commands at all, and trips when the measurement is
 heading out of the envelope. It is reported as `R3b` and it is the weakest
 protection in the project: it has no attribution, no idea which command caused
@@ -89,23 +97,23 @@ requires the process to have moved far enough to notice. `damaged` means the
 consequence stood. `alarmed` means the guard objected to something this model
 has no way to damage.
 
-The two attacks worth following are the overflow and the set-point write,
+The two attacks worth following are the export violation and the set-point write,
 because they fail differently.
 
-The overflow is prevented in all three modes. Its commands are individually
-legal, so no mode refuses them at the wire; what saves the tank is the
+The export violation is prevented in all three modes. Its commands are individually
+legal, so no mode refuses them at the wire; what saves the storage site is the
 supervisor, and the supervisor works blind. An encrypted channel costs this
 attack almost nothing, which is worth saying because it is the opposite of what
 the headline suggests.
 
 The set-point write is the one that separates the modes. Under `None` it is
-refused on its range before it lands and the tank never moves. Under `Sign` it
+refused on its range before it lands and the storage site never moves. Under `Sign` it
 is refused too, by cutting the channel, and then the operator cannot get back
 in: every recovery write after that point fails. Under `SignAndEncrypt` it
 lands, the plant's own control loop starts filling toward a target above the
-top of the tank, the blind supervisor trips the pump repeatedly, the control
+top of the storage site, the blind supervisor trips the pump repeatedly, the control
 loop overrides each trip because the guard cannot see or stop its commands, and
-the tank overflows anyway.
+the storage site export violations anyway.
 
 That is the encryption problem with a number on it rather than an argument. The
 rules did not get worse. The traffic they run on disappeared.
@@ -127,7 +135,7 @@ What the guard did about each attack:
 
 | scenario | None | Sign | SignAndEncrypt |
 | --- | --- | --- | --- |
-| overflow | recovered | recovered | recovered |
+| export violation | recovered | recovered | recovered |
 | parameter_tamper | refused | refused | recovered |
 | setpoint_jump | refused | refused | damaged |
 | valve_hammer | refused | refused | recovered |
@@ -216,7 +224,7 @@ does. The outcomes are stable; the counts are not.
 
 ```bash
 python scripts/run_opcua.py
-python scripts/run_opcua.py --scenarios none overflow setpoint_jump
+python scripts/run_opcua.py --scenarios none export violation setpoint_jump
 python scripts/run_opcua.py --modes None SignAndEncrypt
 python -m pytest tests/test_opcua.py
 ```

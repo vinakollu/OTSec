@@ -43,7 +43,11 @@ from ..modbus.protocol import (
     is_exception,
     read_request,
 )
-from ..modbus.registers import IR_LEVEL
+
+#: The input register a liveness probe reads. A probe does not care what
+#: the value means, only that something answered with one, so this is a
+#: property of the probe rather than of any particular device map.
+LIVENESS_REGISTER = 0
 
 #: A probe answers at most this many bytes' worth of response. One Modbus ADU
 #: is 260 bytes at most, so anything beyond this is not a reply we asked for.
@@ -178,7 +182,7 @@ class ModbusProbe:
         port: int,
         *,
         unit_id: int = 1,
-        address: int = IR_LEVEL,
+        address: int = LIVENESS_REGISTER,
         count: int = 1,
         timeout_s: float = 1.0,
     ) -> None:

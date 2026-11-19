@@ -1,6 +1,6 @@
 # The storage-site add-on
 
-Extends OTGuard from a single water tank to a utility-scale battery site of the
+Takes OTGuard to a utility-scale battery site of the
 kind built around Megapack-class units. This document covers what was added, why
 each rule has the shape it does, and where the design fails.
 

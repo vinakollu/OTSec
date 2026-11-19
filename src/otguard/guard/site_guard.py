@@ -1,6 +1,6 @@
 """``SiteGuard`` — the bump-in-the-wire decision engine for a storage site.
 
-Same shape as :class:`~otguard.guard.guard.PhysicsGuard`, and deliberately so:
+Same shape as the treatment works' guard, and deliberately so:
 ``observe`` for telemetry flowing back, ``check`` for commands heading in,
 protocol-agnostic in between. What differs is what it has to keep track of —
 sixteen units instead of one actuator pair, three power measurements instead of
@@ -496,7 +496,8 @@ class SiteGuard:
         return [v.latency_us for v in self.verdicts]
 
     def acknowledge(self) -> None:
-        """Operator reset. Manual by design — see PhysicsGuard.acknowledge."""
+        """Operator reset. Manual by design: letting a plant clear its own trip
+        hands the decision back to whoever sent the bad command."""
         self.trip_latched = False
         self.lockout_directions.clear()
         self._last_trip_t.clear()

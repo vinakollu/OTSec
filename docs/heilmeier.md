@@ -1,7 +1,7 @@
 # The Heilmeier questions
 
 Answers sized for the proposal and the two presentations. Numbers are from
-`results/metrics.json`; regenerate with `python scripts/run_eval.py --stealth-sweep`.
+`results/metrics.json`; regenerate with `python scripts/run_site_eval.py --sweeps`.
 
 ---
 
