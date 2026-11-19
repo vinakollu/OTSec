@@ -29,9 +29,8 @@ ramp is plausible during a frequency excursion and suspicious without one.
 
 from __future__ import annotations
 
-import math
 import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from ..config import SiteConfig, SiteSafetyConfig
 from .megapack import Megapack

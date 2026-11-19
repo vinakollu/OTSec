@@ -125,7 +125,7 @@ SITE_PAGE = (
     <h2>The site
       <span class="note">power flows up from the batteries to the grid; commands
       come down from the top and cross the guard</span></h2>
-    <div class="body" style="padding:10px 14px 4px">
+    <div class="body scroll-x" style="padding:10px 14px 4px">
       <svg id="yard" viewBox="0 0 1400 596" role="img"
            aria-label="Schematic of the storage site: sixteen battery units, the
                        transformer, the grid connection and the three instruments
@@ -145,7 +145,7 @@ SITE_PAGE = (
     <div class="meters" id="meters"></div>
   </section>
   <section class="panel">
-    <h2>Recent history <span class="note">shaded band is the allowed range</span></h2>
+    <h2>Recent history <span class="note">scaled to the trace, the green band is the allowed range where it is in view</span></h2>
     <div class="charts" id="charts"></div>
   </section>
 </div>
@@ -154,6 +154,12 @@ SITE_PAGE = (
   <h2>Interfere with the site
     <span class="note">two of these the guard does not win, and they say so</span></h2>
   <div class="atk" id="attacks"></div>
+</section>
+
+<section class="panel">
+  <h2>The network <span class="note">zones and conduits, Purdue levels in the corner</span></h2>
+  <div class="zones" id="zones"></div>
+  <div class="conduits" id="conduits"></div>
 </section>
 
 <p class="foot-note" id="honesty"></p>
@@ -307,6 +313,7 @@ function renderScenario(p) {
   buildMeters(p);
   buildCharts(p);
   buildAttacks(p);
+  buildNetwork(p.topology);
   $("honesty").textContent =
     "The site's network is a model rather than a rack of listening servers, and "
     + "the DNP3 and GOOSE frames the protocols are built from run in process "

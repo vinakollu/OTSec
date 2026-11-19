@@ -41,25 +41,25 @@ CORE_CSS = r"""
   --line:#243542; --line-soft:#1b2834;
   --ink:#e8eff5; --ink-2:#9db0c0; --ink-3:#8299ac;
   --good:#1fb880; --watch:#d9a21b; --breach:#f0616d; --idle:#5d7183;
-  --good-bg:rgba(31,184,128.13); --watch-bg:rgba(217,162,27.14);
-  --breach-bg:rgba(240,97,109.14); --idle-bg:rgba(93,113,131.13);
+  --good-bg:rgba(31,184,128,.13); --watch-bg:rgba(217,162,27,.14);
+  --breach-bg:rgba(240,97,109,.14); --idle-bg:rgba(93,113,131,.13);
   --s1:#588ffb; --s2:#d97534; --s3:#00af85; --s4:#9f7aec;
-  --water:#2f6fd0; --water-soft:rgba(47,111,208.22);
+  --water:#2f6fd0; --water-soft:rgba(47,111,208,.22);
   --radius:12px; --radius-s:8px;
   --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
   --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
-  --shadow:0 1px 2px rgba(0,0,0.34),0 8px 24px -12px rgba(0,0,0.6);
+  --shadow:0 1px 2px rgba(0,0,0,.34),0 8px 24px -12px rgba(0,0,0,.6);
 }
 :root[data-theme="light"]{
   --bg:#eef2f6; --surface:#ffffff; --surface-2:#f4f7fa; --raised:#eaeff5;
   --line:#d9e1e9; --line-soft:#e7edf3;
   --ink:#0d1b27; --ink-2:#4e5f6e; --ink-3:#5b6b7d;
   --good:#047857; --watch:#a16207; --breach:#b42318; --idle:#94a3b8;
-  --good-bg:rgba(4,120,87.10); --watch-bg:rgba(161,98,7.11);
-  --breach-bg:rgba(180,35,24.10); --idle-bg:rgba(148,163,184.14);
+  --good-bg:rgba(4,120,87,.10); --watch-bg:rgba(161,98,7,.11);
+  --breach-bg:rgba(180,35,24,.10); --idle-bg:rgba(148,163,184,.14);
   --s1:#1d4ed8; --s2:#c2410c; --s3:#047857; --s4:#6d28d9;
-  --water:#1d4ed8; --water-soft:rgba(29,78,216.16);
-  --shadow:0 1px 2px rgba(16,34,51.06),0 10px 26px -14px rgba(16,34,51.26);
+  --water:#1d4ed8; --water-soft:rgba(29,78,216,.16);
+  --shadow:0 1px 2px rgba(16,34,51,.06),0 10px 26px -14px rgba(16,34,51,.26);
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -79,10 +79,12 @@ header.top{
   position:sticky; top:0; z-index:40;
 }
 .brand{display:flex; align-items:baseline; gap:10px; min-width:0;
-  flex:1 1 240px; overflow:hidden}
-.brand h1{font-size:17px; margin:0; letter-spacing:-.01em; font-weight:650}
-.brand .sub{color:var(--ink-3); font-size:12.5px; white-space:nowrap;
-  overflow:hidden; text-overflow:ellipsis}
+  flex:1 1 300px; overflow:hidden}
+.brand h1{font-size:17px; margin:0; letter-spacing:-.01em; font-weight:650;
+  white-space:nowrap}
+.brand .sub{color:var(--ink-3); font-size:12.5px; line-height:1.35;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+  overflow:hidden}
 .spacer{flex:0 1 0}
 .clock{font-family:var(--mono); font-size:13px; color:var(--ink-2);
   background:var(--surface-2); border:1px solid var(--line);
@@ -163,19 +165,21 @@ PARTS_CSS = r"""
 <style>
 /* ---------------- meter list ---------------- */
 .meters{display:flex; flex-direction:column}
-.meter{display:grid; grid-template-columns:minmax(150px,1.25fr) minmax(130px,2fr) 96px 74px;
-  gap:12px; align-items:center; padding:9px 18px; border-bottom:1px solid var(--line-soft)}
+.meter{display:grid; grid-template-columns:minmax(220px,2.2fr) minmax(110px,1.3fr) 96px 84px;
+  gap:12px; align-items:center; padding:10px 18px; border-bottom:1px solid var(--line-soft)}
 .meter:last-child{border-bottom:0}
 .meter:hover{background:var(--surface-2)}
 .meter .nm{font-size:13px; min-width:0}
-.meter .nm b{font-weight:550; display:block; overflow:hidden;
-  text-overflow:ellipsis; white-space:nowrap}
+/* The sentence under each name is why a reader who does not know what a
+   nephelometric turbidity unit is can still read this page, so it wraps
+   rather than being cut off at the column edge. */
+.meter .nm b{font-weight:550; display:block; line-height:1.3}
 .meter .nm i{font-style:normal; color:var(--ink-3); font-size:11.5px;
-  display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  display:block; line-height:1.35; margin-top:2px}
 .track{position:relative; height:9px; border-radius:5px; background:var(--surface-2);
   border:1px solid var(--line-soft); overflow:visible}
 .track .fill{position:absolute; inset:0 auto 0 0; border-radius:4px; background:var(--idle);
-  transition:width .35s cubic-bezier(.4,0.2,1), background .25s linear}
+  transition:width .35s cubic-bezier(.4,0,.2,1), background .25s linear}
 .track .fill.good{background:var(--good)} .track .fill.watch{background:var(--watch)}
 .track .fill.breach{background:var(--breach)}
 .track .mk{position:absolute; top:-3px; bottom:-3px; width:2px; background:var(--ink-3);
@@ -216,6 +220,12 @@ PARTS_CSS = r"""
 .ln.pass{padding-top:6px; padding-bottom:7px}
 .ln.pass h4{font-weight:450; font-size:12.5px; color:var(--ink-2)}
 .ln.pass .ic{background:transparent; border-color:var(--line-soft); color:var(--ink-3)}
+/* Traffic below the guard. It never crossed the conduit, so it sits behind
+   everything that did rather than in front of it. */
+.ln.local{padding-top:5px; padding-bottom:6px}
+.ln.local h4{font-weight:450; font-size:12px; color:var(--ink-3)}
+.ln.local .ic{background:transparent; border-style:dashed;
+  border-color:var(--line-soft); color:var(--ink-3)}
 .ln time{display:block; margin-top:4px; font-family:var(--mono); font-size:10.5px;
   color:var(--ink-3)}
 .ln.fresh{animation:slide .3s ease both}
@@ -235,10 +245,13 @@ PARTS_CSS = r"""
 .card button{align-self:flex-start}
 
 /* ---------------- network ---------------- */
-.zones{display:grid; grid-template-columns:repeat(auto-fill,minmax(236px,1fr));
-  gap:12px; padding:16px 18px}
+/* Columns rather than a grid. The zones hold wildly different numbers of
+   devices, and on a grid the tallest one strands a whole row beside empty
+   space. Flowed into columns they pack. */
+.zones{columns:244px; column-gap:12px; padding:16px 18px}
 .zone{border:1px solid var(--line); border-radius:var(--radius-s);
-  background:var(--surface-2); padding:11px 13px}
+  background:var(--surface-2); padding:11px 13px; margin-bottom:12px;
+  break-inside:avoid; -webkit-column-break-inside:avoid}
 .zone h4{margin:0 0 2px; font-size:12.5px; font-weight:640;
   display:flex; justify-content:space-between; gap:8px; align-items:baseline}
 .zone h4 em{font-style:normal; font-family:var(--mono); font-size:10.5px;
@@ -264,14 +277,25 @@ PARTS_CSS = r"""
   color:var(--ink); line-height:1.25}
 @media (max-width:1180px){
   .g-hero{grid-template-columns:repeat(2,1fr)}
-  .g-main.g-split{grid-template-columns:1fr}
+  .g-main,.g-split{grid-template-columns:1fr}
   .charts{grid-template-columns:1fr}
 }
 @media (max-width:640px){
   .wrap{padding:12px 14px 40px}
   .g-hero{grid-template-columns:1fr}
-  .meter{grid-template-columns:1fr 70px; row-gap:6px}
-  .meter .track{grid-column:1/-1}
+  .meter{grid-template-columns:minmax(0,1fr) auto; row-gap:7px}
+  .meter .track{grid-column:1/-1; order:3}
+  .meter .fig{order:2}
+  .meter .st{grid-column:1/-1; order:4; justify-self:start}
+  /* The controls wrap to four rows on a phone, and a sticky header that
+     tall covers a third of the screen. It scrolls away here instead. */
+  header.top{position:static}
+  .brand{flex:1 1 100%}
+  .brand .sub{display:none}
+  /* A 1400-unit schematic squeezed into 330 renders its labels at two
+     pixels. It keeps a legible width and the panel scrolls sideways. */
+  .panel .body.scroll-x{overflow-x:auto; -webkit-overflow-scrolling:touch}
+  .panel .body.scroll-x > svg{min-width:720px}
 }
 </style>"""
 
@@ -414,11 +438,28 @@ function drawChart(key) {
     hi = Math.max(hi, m.limit_high + pad * 0.35);
   }
   lo = Math.max(lo, m.scale_min); hi = Math.min(hi, m.scale_max);
+
+  /* A floor on how far the chart may zoom in. Without one, a site holding
+     9.0351 MW against 9.0372 MW fills the frame with a two-kilowatt wobble
+     and draws it as a cliff, which is a chart inventing an event. The floor
+     is the smallest step the metric actually displays, so a value that is
+     not moving on the page is not moving on the chart either. */
+  var step = Math.pow(10, -(m.decimals === undefined ? 2 : m.decimals));
+  var floor = Math.max(step * 6, Math.abs(dmax) * 0.012);
+  if (hi - lo < floor) {
+    var mid = (hi + lo) / 2;
+    lo = mid - floor / 2; hi = mid + floor / 2;
+    lo = Math.max(lo, m.scale_min); hi = Math.min(hi, m.scale_max);
+  }
   if (hi - lo < 1e-9) { hi = lo + Math.abs(lo || 1) * 0.2 + 0.1; }
 
-  var PAD = 4, iw = w - PAD * 2, ih = h - PAD * 2;
+  /* Room on the left for the two numbers that say how far the trace
+     actually travelled. Without them a line that moved 0.01 mg/L and a line
+     that moved 10 look identical, which is the chart telling the reader
+     nothing while appearing to tell them something. */
+  var PAD = 4, GUT = 44, iw = w - PAD - GUT, ih = h - PAD * 2;
   function Y(v) { return PAD + ih - ((v - lo) / (hi - lo)) * ih; }
-  function X(i) { return PAD + (i / (data.length - 1)) * iw; }
+  function X(i) { return GUT + (i / (data.length - 1)) * iw; }
 
   /* the allowed band, drawn first so the line sits on top of it */
   var lowOn = m.limit_low !== null && m.limit_low > lo && m.limit_low < hi;
@@ -426,13 +467,13 @@ function drawChart(key) {
   if (lowOn || highOn) {
     var bl = lowOn ? m.limit_low : lo, bh = highOn ? m.limit_high : hi;
     g.fillStyle = css("--good-bg");
-    g.fillRect(PAD, Y(bh), iw, Y(bl) - Y(bh));
+    g.fillRect(GUT, Y(bh), iw, Y(bl) - Y(bh));
   }
   [[m.limit_low, "low"], [m.limit_high, "high"]].forEach(function (pair) {
     if (pair[0] === null || pair[0] < lo || pair[0] > hi) { return; }
     g.strokeStyle = css("--breach"); g.lineWidth = 1;
     g.setLineDash([3, 3]); g.globalAlpha = 0.75;
-    g.beginPath(); g.moveTo(PAD, Y(pair[0])); g.lineTo(w - PAD, Y(pair[0])); g.stroke();
+    g.beginPath(); g.moveTo(GUT, Y(pair[0])); g.lineTo(w - PAD, Y(pair[0])); g.stroke();
     g.setLineDash([]); g.globalAlpha = 1;
   });
 
@@ -450,18 +491,50 @@ function drawChart(key) {
   g.strokeStyle = css("--surface"); g.lineWidth = 2;
   g.beginPath(); g.arc(X(data.length - 1), Y(last[1]), 4.5, 0, 6.2832);
   g.fill(); g.stroke();
+
+  /* The vertical extent, stated. Two labels and a hairline are enough: the
+     caption underneath carries the limits, and a full gridded axis on a
+     chart this short costs more ink than it returns. */
+  g.strokeStyle = css("--line-soft"); g.lineWidth = 1;
+  g.beginPath();
+  g.moveTo(GUT - 0.5, PAD); g.lineTo(GUT - 0.5, PAD + ih);
+  g.moveTo(GUT, PAD + ih + 0.5); g.lineTo(w - PAD, PAD + ih + 0.5);
+  g.stroke();
+  g.fillStyle = css("--ink-3");
+  g.font = "10px " + (css("--mono") || "monospace");
+  g.textAlign = "right"; g.textBaseline = "top";
+  var ends = axisLabels(lo, hi);
+  g.fillText(ends[1], GUT - 7, PAD);
+  g.textBaseline = "bottom";
+  g.fillText(ends[0], GUT - 7, PAD + ih);
+
   $("cv-" + key).textContent = fmt(last[1], m);
 }
+
+/* An axis end is there to give the trace a scale, so it needs only as many
+   digits as it takes to differ from the other end. Two identical labels
+   tell the reader nothing at all. */
+function axisLabels(lo, hi) {
+  for (var dp = 0; dp <= 4; dp += 1) {
+    var a = lo.toFixed(dp), b = hi.toFixed(dp);
+    if (a !== b) { return [a, b]; }
+  }
+  return [lo.toPrecision(4), hi.toPrecision(4)];
+}
 function fmt(v, m) {
-  var span = (m.scale_max - m.scale_min);
-  var dp = span >= 500 ? 0 : span >= 20 ? 1 : 2;
+  var dp = m.decimals;
+  if (dp === undefined || dp === null) {
+    var span = (m.scale_max - m.scale_min);
+    dp = span >= 500 ? 0 : span >= 20 ? 1 : 2;
+  }
   return v.toFixed(dp) + " " + m.unit;
 }
 /* ================================================================== *
  * The narration column
- * ================================================================== */var FEED_MAX = 90;
+ * ================================================================== */
+var FEED_MAX = 90;
 var LAST_QUIET = null;
-function addLine(p, t, quiet) {
+function addLine(p, t, quiet, local) {
   var feed = $("feed");
   var sev = p.severity || "info";
   /* A plant that writes the same set-point to sixteen units in rotation
@@ -477,7 +550,8 @@ function addLine(p, t, quiet) {
     LAST_QUIET.node.querySelector("time").textContent = clock(t) + "  \u00b7  allowed";
     return;
   }
-  var row = el("div", "ln " + sev + (quiet ? " pass" : "") + " fresh");
+  var row = el("div", "ln " + sev + (quiet ? " pass" : "")
+                 + (local ? " local" : "") + " fresh");
   var ic = el("div", "ic", GLYPH[sev] || GLYPH.info);
   row.appendChild(ic);
   var body = el("div");
@@ -512,7 +586,10 @@ function connect() {
     else if (p.kind === "trip") { addLine(p, p.t); }
     else if (p.kind === "verdict") {
       flyCommand(p);
-      addLine(p, p.t, p.decision === "allow");
+      /* A write the guard passed is quiet. A controller regulating its
+         own stage never crossed the guard at all, so it is quieter
+         still: it is context for the traffic that did. */
+      addLine(p, p.t, p.decision !== "block", p.decision === "local");
     }
   };
   src.onerror = function () {
@@ -540,7 +617,7 @@ function buildHero(p) {
     t.setAttribute("data-health", "idle");
     t.appendChild(el("div", "cap", m.label));
     var v = el("div", "val");
-    var b = el("b", null, ", "); b.id = "tv-" + m.key;
+    var b = el("b", null, "·"); b.id = "tv-" + m.key;
     v.appendChild(b); v.appendChild(el("span", null, m.unit));
     t.appendChild(v);
     var f = el("div", "foot");
@@ -566,17 +643,50 @@ function buildMeters(p) {
     tr.appendChild(fl);
     row.appendChild(tr);
     var fig = el("div", "fig");
-    var fv = el("span", null, ", "); fv.id = "mv-" + m.key;
+    var fv = el("span", null, "·"); fv.id = "mv-" + m.key;
     fig.appendChild(fv); fig.appendChild(el("em", null, m.unit));
     row.appendChild(fig);
     var st = el("div", "st");
     var chip = el("span", "chip idle"); chip.id = "mc-" + m.key;
     chip.appendChild(el("span", "glyph", "·"));
-    chip.appendChild(el("span", null, ", "));
+    chip.appendChild(el("span", null, "waiting"));
     st.appendChild(chip);
     row.appendChild(st);
     row.title = m.why;
     box.appendChild(row);
+  });
+}
+
+/* The zone and conduit panel. Both plants publish the same shape from
+   their topology module, so one builder serves both pages. */
+function buildNetwork(topo) {
+  if (!topo || !topo.zones || !$("zones")) { return; }
+  var zb = $("zones"); zb.innerHTML = "";
+  topo.zones.forEach(function (z) {
+    var d = el("div", "zone");
+    var h = el("h4", null, z.name);
+    h.appendChild(el("em", null, z.level));
+    d.appendChild(h);
+    if (z.purpose) { d.appendChild(el("p", null, z.purpose)); }
+    topo.devices.filter(function (v) { return v.zone === z.name; })
+      .forEach(function (v) {
+        var r = el("div", "dev");
+        r.appendChild(el("span", "dot " + (v.critical ? "good" : "")));
+        r.appendChild(el("code", null, v.name));
+        r.appendChild(el("span", "role", v.kind));
+        r.title = v.description + " (" + v.address + ", " + v.protocol + ")";
+        d.appendChild(r);
+      });
+    zb.appendChild(d);
+  });
+  var cb = $("conduits"); cb.innerHTML = "";
+  topo.conduits.forEach(function (c) {
+    var r = el("div", "cd" + (c.guarded ? " guarded" : ""));
+    r.appendChild(el("span", "glyph", c.guarded ? "\u2713" : "\u00b7"));
+    r.appendChild(el("code", null, c.source + " \u2192 " + c.target));
+    r.appendChild(el("span", null, c.protocol));
+    r.appendChild(el("span", "why", c.guarded ? "OTGuard sits here" : c.note));
+    cb.appendChild(r);
   });
 }
 
@@ -587,7 +697,7 @@ function buildCharts(p) {
     var c = el("div", "chart");
     var hd = el("div", "hd");
     hd.appendChild(el("b", null, m.label));
-    var cur = el("span", null, ", "); cur.id = "cv-" + key;
+    var cur = el("span", null, "·"); cur.id = "cv-" + key;
     hd.appendChild(cur);
     c.appendChild(hd);
     var cv = document.createElement("canvas"); cv.id = "cc-" + key;

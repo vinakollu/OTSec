@@ -24,7 +24,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from ..bess import BessSite
-from ..bess.types import BreakerState, SiteCommand, SiteCommandKind, SiteObservation
+from ..bess.types import SiteCommand, SiteCommandKind
 from ..config import Config
 from ..guard.site_guard import SiteGuard, SiteSupervisionEvent, SiteVerdict
 from ..scenarios.site_base import ScheduledSiteCommand, SiteScenario

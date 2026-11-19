@@ -127,6 +127,40 @@ class Conduit:
         )
 
 
+
+#: What each zone is for, in the words the live page uses.
+ZONE_PURPOSE = {
+    "enterprise": "Corporate IT, billing and the utility's own reporting",
+    "dmz": "The jump server every path from outside must pass through",
+    "supervisory": "The dispatch SCADA and the operator screen",
+    "engineering": "The engineering workstation, reaching in via the jump server",
+    "control": "The site controller that splits dispatch across the fleet",
+    "field": "The battery units, the relay, the meters and the switches",
+}
+
+#: Why a conduit exists, for the ones the guard does not sit on.
+CONDUIT_NOTE = {
+    "enterprise_to_dmz": "Reporting out of the site. Not on the guard's path.",
+    "control_to_field": "Below the guard. An attacker here is out of its reach.",
+    "field_to_control": "Telemetry coming back. Read by the guard, not judged.",
+    "field_peer": "GOOSE and PRP between field devices. Never leaves Level 1.",
+}
+
+#: One line per role, for the device tooltips.
+ROLE_NOTE = {
+    Role.SITE_CONTROLLER: "Splits the dispatch set-point across the fleet",
+    Role.MEGAPACK: "One battery unit with its own inverter and cooling",
+    Role.RELAY: "Protection relay. One of the three power measurements",
+    Role.METER: "Revenue meter. The measurement the utility bills against",
+    Role.SWITCH: "Field network switch carrying the duplicated ring",
+    Role.SCADA: "Dispatch from the control room",
+    Role.HMI: "The operator's screen",
+    Role.JUMP_SERVER: "The bastion every session from outside must cross",
+    Role.FIREWALL: "The zone boundary itself",
+    Role.HISTORIAN: "Reads the process feed. Writes nothing",
+    Role.ENGINEERING: "Where limits are changed, under a work order",
+}
+
 @dataclass
 class SiteTopology:
     """The devices, the zones they sit in and the conduits between them."""
@@ -178,6 +212,65 @@ class SiteTopology:
         if a is None or b is None:
             return 0.0
         return abs(a.rank - b.rank)
+
+    def summary(self) -> dict:
+        """The topology as the live page draws it.
+
+        The guarded conduits are the ones that reach the control zone. That
+        is where the guard sits, and it is the distinction the page exists to
+        make: traffic below that line is out of its reach, and traffic that
+        never leaves a zone never crosses it at all.
+        """
+        control = self.zone_level("control")
+        control_rank = control.rank if control else 0.0
+
+        def guards(c: Conduit) -> bool:
+            """Does the guard adjudicate what crosses this conduit?
+
+            It sits in front of the control zone on the way in, so a conduit
+            counts only when it carries commands *down* into control. The
+            return path from the field carries telemetry, which the guard
+            reads to form its belief and never rules on.
+            """
+            if c.dest_zone != "control":
+                return False
+            src = self.zone_level(c.source_zone)
+            return src is not None and src.rank > control_rank
+
+        zones = []
+        for zone in sorted(self.zones(),
+                           key=lambda z: -(self.zone_level(z).rank
+                                           if self.zone_level(z) else 0.0)):
+            level = self.zone_level(zone)
+            zones.append({
+                "name": zone,
+                "level": (level.label.split(" ", 2)[0] + " " + level.label.split(" ")[1]
+                          if level else "?"),
+                "purpose": ZONE_PURPOSE.get(zone, ""),
+            })
+        return {
+            "zones": zones,
+            "conduits": [{
+                "name": c.name,
+                "source": c.source_zone,
+                "target": c.dest_zone,
+                "protocol": "/".join(c.protocols),
+                "guarded": guards(c),
+                "note": (f"Must pass through {c.via}." if c.via
+                         else CONDUIT_NOTE.get(c.name, "")),
+            } for c in self.conduits],
+            "devices": [{
+                "name": d.name,
+                "kind": d.role.value.replace("_", " "),
+                "zone": d.zone,
+                "level": d.level.label,
+                "protocol": "/".join(d.protocols) or "-",
+                "address": d.address or "-",
+                "description": ROLE_NOTE.get(d.role, d.role.value.replace("_", " ")),
+                "critical": d.role in (Role.MEGAPACK, Role.RELAY, Role.METER,
+                                       Role.SITE_CONTROLLER),
+            } for d in self.devices],
+        }
 
     def describe(self) -> str:
         lines = ["Zones and devices:"]

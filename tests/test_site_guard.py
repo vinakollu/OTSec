@@ -14,7 +14,6 @@ import pytest
 
 from otguard.bess import BessSite
 from otguard.bess.types import (
-    BreakerState,
     MeasurementSource,
     PackReport,
     SiteCommand,

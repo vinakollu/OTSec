@@ -124,7 +124,7 @@ async def site_scenario(live: Live, inform_guard: bool, speed: float = 10.0) -> 
     # making the run take its simulated length in real minutes.
     steps_per_frame = max(1, int(_FRAME_S * speed / dt))
     script = {
-        60.0: ("the fleet is exporting; all three measurements agree", "info"),
+        60.0: ("the fleet is exporting. All three measurements agree", "info"),
         120.0: ("cutting the revenue meter's link: its reading freezes", "warn"),
         260.0: ("cutting the protection relay's link: two readings now frozen", "warn"),
         300.0: ("the site ramps down, and the two frozen readings do not", "warn"),
@@ -152,7 +152,7 @@ async def site_scenario(live: Live, inform_guard: bool, speed: float = 10.0) -> 
                 t,
                 direction=getattr(event, "direction", "") or "supervision",
                 rules=sorted({f.rule_id for f in event.findings}),
-                detail="; ".join(f.detail for f in event.findings)[:200],
+                detail=". ".join(f.detail for f in event.findings)[:200],
             ))
 
         if t >= frame_due:

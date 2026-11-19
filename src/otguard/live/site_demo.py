@@ -726,9 +726,8 @@ class SiteDemo:
         return LiveEvent(Kind.SCENARIO, self._now(), {
             "plant": "site", "view": "site",
             "name": "grid storage site",
-            "summary": f"{b.site.n_packs} battery units behind a "
-                       f"{b.site.poi_rating_mw:.0f} MVA transformer, with a "
-                       f"{b.site.poi_limit_mw:.0f} MW export limit.",
+            "summary": f"{b.site.n_packs} battery units behind one "
+                       f"{b.site.poi_limit_mw:.0f} MW grid connection.",
             "speed": self.clock.speed,
             "seed": self._seed,
             "n_packs": b.site.n_packs,
@@ -736,7 +735,7 @@ class SiteDemo:
             "pack_mwh": b.pack.energy_mwh,
             "poi_limit_mw": b.site.poi_limit_mw,
             "poi_rating_mw": b.site.poi_rating_mw,
-            "topology": self.topology.summary() if hasattr(self.topology, "summary") else {},
+            "topology": self.topology.summary(),
             "metrics": [
                 {"key": m.key, "label": m.label, "unit": m.unit,
                  "area": m.area.value, "plain": m.plain, "why": m.why,

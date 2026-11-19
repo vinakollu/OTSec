@@ -281,7 +281,7 @@ def assess(state: PlantState, safety: WaterSafety | None = None) -> list[dict]:
             "limit_high": metric.limit_high,
             "target_low": metric.target_low,
             "target_high": metric.target_high,
-            "scale_min": metric.scale_min,
+            "scale_min": metric.scale_min, "decimals": metric.decimals,
             "scale_max": metric.scale_max,
             "plain": metric.plain,
             "why": metric.why,
