@@ -136,10 +136,19 @@ class WaterWorks:
         self.safety = safety or WaterSafety()
         self.rng = random.Random(seed)
         self.state = PlantState()
-        self.state.clearwell_level_m = 3.5
+        # What the river is doing today, and how much of the night's water is
+        # still in the tank. A works does not meet the same water twice: rain
+        # upstream a day ago decides the turbidity, and the overnight draw
+        # decides the level. Fixing these made every run identical and made
+        # the dosing look like a lookup rather than a response.
+        self.state.raw_turbidity_ntu = max(1.2, self.rng.gauss(3.6, 1.1))
+        self.state.raw_ph = min(8.2, max(6.9, self.rng.gauss(7.6, 0.18)))
+        self.state.clearwell_level_m = self.rng.uniform(2.6, 4.3)
         self.state.max_chlorine_dose_mg_l = 5.0
         self._cl_delay = _Delay(self.cfg.chlorine_transport_s, self.cfg.dt_s)
-        self._coag_delay = _Delay(self.cfg.coagulant_transport_s, self.cfg.dt_s, 6.4)
+        self._coag_delay = _Delay(
+            self.cfg.coagulant_transport_s, self.cfg.dt_s,
+            self.cfg.coagulant_demand_per_ntu * self.state.raw_turbidity_ntu)
         self._settle()
 
     # ------------------------------------------------------------------
@@ -357,14 +366,29 @@ class WaterWorks:
     def _settle(self) -> None:
         """Run the works to a steady, compliant operating point."""
         s = self.state
-        s.intake_pump_pct, s.raw_valve_pct = 62.0, 100.0
+        # How hard the works runs depends on what the river is handing it. A
+        # plant takes less water when the water is dirty, because the filters
+        # are the bottleneck and pushing a storm through them at full rate is
+        # how turbidity reaches the town. Drawing flow and turbidity
+        # independently produced opening states that were legal but already
+        # amber, which spends the audience's attention before the attack.
+        dirty = min(1.0, max(0.0, (s.raw_turbidity_ntu - 2.0) / 4.0))
+        s.intake_pump_pct = self.rng.uniform(56.0, 78.0 - 14.0 * dirty)
+        s.raw_valve_pct = 100.0
         s.filter_valve_pct, s.clearwell_outlet_pct = 100.0, 100.0
-        inflow = self.cfg.max_intake_flow_m3h * 0.62
+        inflow = self.cfg.max_intake_flow_m3h * s.intake_pump_pct / 100.0
         s.high_lift_pump_pct = 100.0 * inflow / self.cfg.max_high_lift_flow_m3h
         s.coagulant_dose_mg_l = self.cfg.coagulant_demand_per_ntu * s.raw_turbidity_ntu
         s.floc_paddle_pct = 60.0
-        s.chlorine_dose_mg_l = 1.5
-        s.caustic_dose_mg_l = 8.0
+        # Dosed for the water in front of it: the demand this turbidity
+        # creates, plus the residual the works aims to leave.
+        s.chlorine_dose_mg_l = round(
+            self.cfg.chlorine_demand_base_mg_l
+            + self.cfg.chlorine_demand_per_ntu * 0.05
+            + self.rng.uniform(0.85, 1.05), 2)
+        # Enough caustic to bring this river's pH to about 7.9.
+        s.caustic_dose_mg_l = round(
+            max(0.0, (7.9 - s.raw_ph) / self.cfg.caustic_ph_per_mg_l), 1)
         self._coag_delay.fill(s.coagulant_dose_mg_l)
         self._cl_delay.fill(s.chlorine_dose_mg_l)
         for _ in range(900):

@@ -54,6 +54,7 @@ from enum import Enum
 from typing import Any, Mapping
 
 from ..guard.types import CommandKind
+from ..guard.wire import PointRole
 from . import registers as plc_regs
 from .protocol import (
     Space,
@@ -63,10 +64,6 @@ from .protocol import (
 from .registers import _signed, _to_word
 
 
-class PointRole(str, Enum):
-    COMMAND = "command"
-    PARAMETER = "parameter"
-    PASSTHROUGH = "passthrough"
 
 
 @dataclass(frozen=True)

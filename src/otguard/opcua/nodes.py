@@ -23,7 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..guard.types import CommandKind
-from ..modbus.devicemap import PointRole
+from ..guard.wire import PointRole
 
 NAMESPACE_URI = "http://otguard.gatech.edu/tank"
 ENDPOINT_PATH = "/otguard/tank/"

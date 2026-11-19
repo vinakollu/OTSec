@@ -35,6 +35,15 @@ RULE_MEANING: dict[str, str] = {
     "W6": "are the orders already in force taking the water somewhere unsafe?",
     "W7": "is this a safe thing to do in the order it is being done?",
     "W8": "should this device, in this part of the network, be writing this?",
+    "B1": "can this unit actually deliver what is being asked of it?",
+    "B2": "does the charge reported add up with the power that has flowed?",
+    "B3": "where does the power at the grid connection end up?",
+    "B4": "is the site changing its output faster than the grid code allows?",
+    "B5": "will this leave a battery hotter than it may safely get?",
+    "B6": "do the three instruments measuring this agree with each other?",
+    "B7": "is the switchgear in a state where this is a safe thing to do?",
+    "B8": "should this device, in this part of the network, be writing this?",
+    "B3b": "is the site's output heading out of its envelope on its own?",
 }
 
 #: Who is on the other end, said the way an operator would say it.
@@ -46,6 +55,9 @@ SOURCE_NAME: dict[str, str] = {
     "jump": "a session coming in through the jump server",
     "vendor": "the vendor's remote support connection",
     "unknown": "a device the plant has no record of",
+    "enterprise": "a machine on the corporate office network",
+    "relay": "the protection relay",
+    "meter": "the revenue meter the utility bills against",
 }
 
 
@@ -66,7 +78,9 @@ class Line:
                 "severity": self.severity, "tag": self.tag}
 
 
-def who(source: str) -> str:
+def who(source: str, names: dict[str, str] | None = None) -> str:
+    if names and source in names:
+        return names[source]
     return SOURCE_NAME.get(source, f"the device called {source}")
 
 
@@ -87,16 +101,23 @@ def asked_for(command: WaterCommand) -> str:
 
 def verdict_line(command: WaterCommand, blocked: bool, findings: list) -> Line:
     """The headline event: somebody asked for something and the guard ruled."""
-    request = f"{who(command.source).capitalize()} asked to {asked_for(command)}."
+    return ruling(f"{who(command.source).capitalize()} asked to "
+                  f"{asked_for(command)}.", blocked, findings)
+
+
+def ruling(request: str, blocked: bool, findings: list,
+           *, subject: str = "the water") -> Line:
+    """One verdict, narrated. Shared by every plant in the project."""
     if not blocked and not findings:
         return Line(
             headline=request,
-            detail="OTGuard let it through. Nothing about it would take the water "
-                   "outside safe limits.",
+            detail=f"OTGuard let it through. Nothing about it would take "
+                   f"{subject} outside safe limits.",
             severity="good", tag="allowed",
         )
     reasons = [_explain(f) for f in findings]
-    first = reasons[0] if reasons else "It would have taken the water outside safe limits."
+    first = (reasons[0] if reasons
+             else f"It would have taken {subject} outside safe limits.")
     if len(reasons) > 1:
         first += " " + _also(reasons[1:])
     if blocked:
@@ -131,9 +152,10 @@ def trip_line(reason: str, plain: str) -> Line:
     """The guard acting on its own, which is the moment worth narrating well."""
     return Line(
         headline="OTGuard stepped in and changed the plant itself.",
-        detail=(plain or reason) + " It will hold the plant there until an "
-                                 "operator acknowledges, because letting it recover on its own would hand the "
-               "decision back to whoever sent the bad command.",
+        detail=(plain or reason)
+        + " It will hold the plant there until an operator acknowledges,"
+          " because letting it recover on its own would hand the decision"
+          " back to whoever sent the bad command.",
         severity="breach", tag="acted",
     )
 
