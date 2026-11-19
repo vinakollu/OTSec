@@ -4,14 +4,14 @@ Mirrors :mod:`otguard.eval.harness` and for the same reasons. The loop is the
 reference wiring for the site guard:
 
 1. advance the site one scan,
-2. read telemetry — all three power measurements and every unit's report, any of
+2. read telemetry, all three power measurements and every unit's report, any of
    which the attacker may have rewritten,
 3. hand it to the guard, which votes, estimates and supervises; a curtailment
    here is applied to the plant,
 4. collect the writes due this scan from the dispatch controller and the
    attacker, run each past the guard, apply only what it allows.
 
-Every scenario runs twice — once enforcing, once with the guard watching but
+Every scenario runs twice, once enforcing, once with the guard watching but
 powerless. Without the second run, "the site did not over-export" is not a
 result: it might have been the guard, or it might have been that nothing was
 going to happen anyway. The tank version established this and it matters more

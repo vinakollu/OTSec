@@ -3,8 +3,8 @@
 > **These tables were measured against the storage tank.** The experiment now
 > runs against the storage site, so every number below is from a plant that is
 > no longer in the project. They are left here because the *shapes* they show
-> — what each security mode leaves readable, and how the guard fails when it
-> cannot read commands — carry over, and because deleting them would lose the
+>, what each security mode leaves readable, and how the guard fails when it
+> cannot read commands, carry over, and because deleting them would lose the
 > record of what was measured. Regenerate against the site with
 > `python scripts/run_opcua.py`, which writes to `results/opcua/`.
 
@@ -51,7 +51,7 @@ Under `SignAndEncrypt` the sequence number, the request identifier and the body
 are all ciphertext. Sixteen bytes of each message stay legible: the type, the
 length, the channel and the key. None of them say which node is being written,
 or to what. The guard cannot pair a response with a request, let alone judge
-one. It does not try — a guard that pattern matches inside ciphertext and acts
+one. It does not try, a guard that pattern matches inside ciphertext and acts
 on what it finds is worse than one that reports it cannot see, because the
 first kind is wrong without knowing it.
 

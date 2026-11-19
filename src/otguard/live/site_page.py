@@ -26,7 +26,7 @@ SITE_PAGE = (
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>OTGuard — grid storage site</title>
+<title>OTGuard, grid storage site</title>
 """
     + CORE_CSS
     + r"""
@@ -331,7 +331,7 @@ function renderState(p) {
     gt.setAttribute("class", "sv-guard-t" + (p.enforcing ? "" : " off"));
     gs.textContent = p.enforcing
       ? "every command below this line is checked against the physics"
-      : "watching only — commands are judged and let through anyway";
+      : "watching only, commands are judged and let through anyway";
   }
 
   var worst = "good";
@@ -432,7 +432,7 @@ function paintInstrument(src) {
                              rx: 8, "class": "inst " + state}));
   g.appendChild(text(geo.x + 12, geo.y + 20, src.label, "inst-t"));
   g.appendChild(text(geo.x + 12, geo.y + 42, src.mw.toFixed(2) + " MW", "inst-v"));
-  var says = !src.live ? "link down — frozen at its last reading"
+  var says = !src.live ? "link down, frozen at its last reading"
            : (src.named ? "named by the guard as the one that is wrong"
                         : "live");
   g.appendChild(text(geo.x + geo.w - 12, geo.y + 42, says, "inst-s", "end"));

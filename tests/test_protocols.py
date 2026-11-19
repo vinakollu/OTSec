@@ -273,7 +273,7 @@ def test_a_valid_engineer_token_raises_the_export_limit():
     """The point of the module: authentication is not plausibility.
 
     Nothing here is broken. The request is authentic, the role is sufficient,
-    and the API applies it — which is why the guard has to see these calls
+    and the API applies it, which is why the guard has to see these calls
     rather than trusting the controller to police itself.
     """
     api = rest.SiteControllerApi()

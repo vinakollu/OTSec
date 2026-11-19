@@ -6,7 +6,7 @@ than the last:
 1. A TCP connection opened. Something is listening on that port.
 2. Something on the far end speaks the protocol and produced a well-formed
    response.
-3. It answered *the thing we asked* — right transaction id, right function,
+3. It answered *the thing we asked*, right transaction id, right function,
    plausible payload.
 
 A scanner that reports only up or down throws that distinction away, and the
@@ -169,7 +169,7 @@ class ModbusProbe:
 
     An exception response still counts as reachable. A device that answers
     "illegal data address" is alive, talking, and telling us our address is
-    wrong — which is a scanner configuration problem, not an outage, and
+    wrong, which is a scanner configuration problem, not an outage, and
     reporting it as an outage would send somebody to the wrong building.
     """
 

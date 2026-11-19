@@ -2,8 +2,8 @@
 
 This does not simulate anything of its own. Every incident in
 :mod:`otguard.scenarios.incidents` points at evidence that already exists
-somewhere in the project — a treatment-works attack, a storage-site
-scenario, a cell of the OPC UA experiment — and this module runs
+somewhere in the project, a treatment-works attack, a storage-site
+scenario, a cell of the OPC UA experiment, and this module runs
 the right one and collects the answer.
 
 Keeping it as a mapping rather than a parallel attack library is deliberate.

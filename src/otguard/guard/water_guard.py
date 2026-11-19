@@ -1,7 +1,7 @@
 """The guard for the works: judge each command, watch the standing order, act.
 
 Same two calls as every other guard in this project. ``check`` rules on a
-command heading for a controller; ``observe`` takes a scan of telemetry and
+command heading for a controller. ``observe`` takes a scan of telemetry and
 decides whether the orders currently in force are taking the water somewhere it
 must not go.
 
@@ -10,7 +10,7 @@ meant shutting a pump: one actuator, one direction, done. On a works the safe
 move depends on which way the water is going wrong, and two of the four are
 counter-intuitive enough to be worth stating.
 
-If the water is under-disinfected, the safe action is not more chlorine — that
+If the water is under-disinfected, the safe action is not more chlorine, that
 takes minutes to arrive and the water leaving now is already short. It is to
 slow the outlet, which raises contact time immediately on the water already in
 the tank.

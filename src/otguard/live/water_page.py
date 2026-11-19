@@ -27,7 +27,7 @@ WATER_PAGE = (
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>OTGuard — water treatment works</title>
+<title>OTGuard, water treatment works</title>
 """
     + CORE_CSS
     + r"""
@@ -52,7 +52,7 @@ WATER_PAGE = (
 .sv-guard{fill:var(--good-bg); stroke:var(--good); stroke-width:1.4}
 .sv-guard.off{fill:var(--watch-bg); stroke:var(--watch); stroke-dasharray:5 4}
 .sv-guard-t{font-size:12.5px; font-weight:700; fill:var(--good)}
-.sv-guard.off + .sv-guard-t, .sv-guard-t.off{fill:var(--watch)}
+.sv-guard.off + .sv-guard-t.sv-guard-t.off{fill:var(--watch)}
 .sv-legend{font-size:10.5px; fill:var(--ink-3)}
 @media (prefers-reduced-motion:reduce){ .sv-flow{animation:none} }
 </style>
@@ -87,7 +87,7 @@ WATER_PAGE = (
 
 <div class="grid g-main">
   <section class="panel" style="display:flex; flex-direction:column">
-    <h2>The process <span class="note">water left to right; commands come down from the top and cross the guard</span></h2>
+    <h2>The process <span class="note">water left to right, commands down from the top and across the guard</span></h2>
     <div class="body" style="padding:10px 14px 4px">
       <svg id="flow" viewBox="0 0 1400 440" role="img"
            aria-label="Schematic of the treatment works with live values at each stage"></svg>
@@ -248,12 +248,11 @@ function renderScenario(p) {
   buildNetwork(p.topology);
   $("honesty").textContent =
     "The twenty-two devices, six zones and six conduits above are a model of the "
-    + "works' network, not twenty-two listening servers; the tank demonstration is "
-    + "the one that runs real Modbus over real sockets. What is not modelled is the "
-    + "guard. Every verdict on this page is the rule set reaching a decision about "
-    + "the water the simulation is actually moving, and the time on the clock runs "
-    + "at ×" + p.speed + " so that a contact tank that takes forty minutes to "
-    + "fill can be watched.";
+    + "works' network, not twenty-two listening servers. What is not modelled is "
+    + "the guard. Every verdict on this page is the rule set reaching a decision "
+    + "about the water the simulation is actually moving, and the time on the "
+    + "clock runs at ×" + p.speed + " so that a clearwell taking forty minutes "
+    + "to fill can be watched.";
 }
 
 function buildNetwork(topo) {
@@ -296,7 +295,7 @@ function renderState(p) {
     gt.setAttribute("class", "sv-guard-t" + (p.enforcing ? "" : " off"));
     gs.textContent = p.enforcing
       ? "every command below this line is checked against the physics"
-      : "watching only — commands are judged and let through anyway";
+      : "watching only, commands are judged and let through anyway";
   }
 
   var worst = "good", any = false;

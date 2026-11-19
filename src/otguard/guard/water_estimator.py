@@ -13,7 +13,7 @@ And the dangerous quantity is not measured at all. CT is a residual multiplied
 by a contact time, and contact time is a volume divided by a flow. Three
 instruments, none of which is the number that matters. The estimator computes
 it, which also means it can be computed for a command that has not happened
-yet — which is the whole of rule W3.
+yet, which is the whole of rule W3.
 
 The cross-check in :meth:`disagreement` is the same idea as the storage site's
 three power measurements, applied to chemistry. The dose pump's stroke says how

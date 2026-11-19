@@ -11,8 +11,8 @@ limit" is
 not a result on its own.
 
 The attack is issued through the operator station's own session rather than
-from a separate connection. That is this project's threat model — the attacker
-has the operator station, not a foothold beside it — and it is also what makes
+from a separate connection. That is this project's threat model, the attacker
+has the operator station, not a foothold beside it, and it is also what makes
 the cost of the guard's last resort measurable. On a signed channel the guard
 cannot refuse one write and keep the session, so the only refusal available is
 to cut the channel, and the channel it cuts is the one the operator is watching
@@ -293,7 +293,7 @@ async def run_cell(
 
         # Open the session *before* the scored window. Establishing a secure
         # channel costs real time, and on a clock running twenty times faster
-        # than the wall that is tens of simulated seconds — more of them under
+        # than the wall that is tens of simulated seconds, more of them under
         # SignAndEncrypt than under None, because of the asymmetric
         # cryptography in the handshake. Scoring from the moment the proxy
         # starts would hand the three modes three different plants to guard and

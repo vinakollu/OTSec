@@ -1,7 +1,7 @@
 """Every number the storage site is judged by, defined once, in one place.
 
 The same treatment the treatment works got, applied backwards. The works had
-its catalogue written before its guard; this site grew its numbers as the
+its catalogue written before its guard. This site grew its numbers as the
 evaluation needed them, and the denominators had to be reconstructed
 afterwards. This file is that reconstruction, done properly: one definition of
 each quantity, with the limit it has to stay inside, the range to draw it
@@ -129,8 +129,8 @@ class SiteReading:
     """Everything the metrics need, read off the site in one pass.
 
     A flat record rather than the site object, because several of these are
-    derived from more than one place and one of them — the spread between the
-    three power measurements — is not a property of the site at all. It is a
+    derived from more than one place and one of them, the spread between the
+    three power measurements, is not a property of the site at all. It is a
     property of the instruments disagreeing, which is the thing this site
     exists to demonstrate.
     """

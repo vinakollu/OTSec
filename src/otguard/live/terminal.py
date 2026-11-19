@@ -11,7 +11,7 @@ It redraws by homing the cursor and clearing each line rather than clearing the
 whole screen, because clearing first and drawing second shows a blank frame for
 one refresh and the result flickers on anything slower than a local terminal.
 
-When stdout is not a terminal — a pipe, a CI log, a file — full-screen drawing
+When stdout is not a terminal, a pipe, a CI log, a file, full-screen drawing
 produces a few thousand lines of escape codes and nothing readable. So it
 checks, and falls back to printing the events that matter one per line. The
 fallback is not a lesser mode for the sake of having one: it is the mode that
@@ -207,8 +207,6 @@ class TerminalView:
         lines = [self._header(width), ""]
         if self.state is None:
             lines.append(f"{DIM}  waiting for the plant to report{RESET}")
-        elif self.state.get("plant") == "tank":
-            lines += self._tank_panel(width)
         else:
             lines += self._site_panel(width)
         lines += ["", self._rule("devices", width)]
@@ -234,37 +232,6 @@ class TerminalView:
     def _rule(self, label: str, width: int) -> str:
         dashes = max(0, width - len(label) - 4)
         return f"{DIM}-- {label} {'-' * dashes}{RESET}"
-
-    # -- tank -----------------------------------------------------------
-    def _tank_panel(self, width: int) -> list[str]:
-        s = self.state or {}
-        height = s.get("height_m", 2.0) or 2.0
-        bar_width = max(20, width - 34)
-        marks = {
-            int(round(s.get("floor_m", 0.2) / height * bar_width)): "|",
-            min(bar_width - 1, int(round(s.get("limit_m", 1.8) / height * bar_width))): "|",
-        }
-        level = s.get("level_m", 0.0)
-        tint = RED if (s.get("overflowed") or s.get("dried_out")) else (
-            YELLOW if level > s.get("limit_m", 1.8) - 0.15 else GREEN
-        )
-        lines = [
-            f"  level    {tint}{level:5.3f} m{RESET}  "
-            f"[{_bar(level / height, bar_width, marks=marks)}]  {DIM}0-{height:g} m{RESET}",
-            f"  {DIM}sensor says {s.get('reported_m', 0.0):5.3f} m, guard believes "
-            f"{s.get('believed_m', 0.0):5.3f} m, overflow at "
-            f"{s.get('limit_m', 0.0):g} m, dry at {s.get('floor_m', 0.0):g} m{RESET}",
-            "",
-            f"  pump     {s.get('pump_pct', 0.0):5.1f} %  "
-            f"[{_bar(s.get('pump_pct', 0.0) / 100.0, 24)}]",
-            f"  valve    {s.get('valve_pct', 0.0):5.1f} %  "
-            f"[{_bar(s.get('valve_pct', 0.0) / 100.0, 24)}]",
-        ]
-        if s.get("overflowed"):
-            lines.append(f"  {RED}{BOLD}the tank has overflowed{RESET}")
-        if s.get("dried_out"):
-            lines.append(f"  {RED}{BOLD}the pump has run dry{RESET}")
-        return lines
 
     # -- site -----------------------------------------------------------
     def _site_panel(self, width: int) -> list[str]:

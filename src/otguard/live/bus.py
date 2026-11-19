@@ -6,7 +6,7 @@ The bus is deliberately small, and two of its properties are load-bearing.
 subscriber has a bounded queue, and when a queue is full the oldest event in it
 is dropped rather than the producer being made to wait. A browser on a bad
 connection therefore loses detail and the simulation keeps its timing. The
-alternative — back-pressure all the way to the control loop — would mean the
+alternative, back-pressure all the way to the control loop, would mean the
 display changed the thing it is displaying, which for a project whose whole
 subject is control timing would be an unforced error. Drops are counted, and
 the count is visible, because a display quietly missing events is worse than

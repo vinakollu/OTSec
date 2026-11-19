@@ -68,7 +68,7 @@ def test_discharge_derates_near_empty(cfg):
 
 
 def test_charge_derates_near_full_and_in_the_cold(cfg):
-    """Not a mirror of the discharge curve — cold limits charging specifically."""
+    """Not a mirror of the discharge curve, cold limits charging specifically."""
     pack = Megapack("MP01", cfg.bess.pack)
     assert pack.max_charge_mw(0.95, 25.0) < cfg.bess.pack.power_mw
     cold = pack.max_charge_mw(0.5, -5.0)

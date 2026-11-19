@@ -9,7 +9,7 @@ problems. Putting them in the same column as a prevented overflow invents a
 denominator.
 
 So the figure has three bands and they are not comparable with each other on
-purpose. The first carries a real number — how much warning there was before
+purpose. The first carries a real number, how much warning there was before
 the process left its envelope. The second holds the incidents whose shape the
 rules recognise in a plant this model cannot damage. The third holds the ones
 the guard would never have seen, each with the reason, which is the band a
@@ -60,7 +60,7 @@ def format_results(results: list[IncidentResult]) -> str:
     for row in results:
         inc = row.incident
         lines.append("")
-        lines.append(f"{inc.name} ({inc.year}) — {row.summary}")
+        lines.append(f"{inc.name} ({inc.year}), {row.summary}")
         if not inc.in_scope:
             lines.append(f"    out of scope: {_scope_note(row)}")
         for ev in row.evidence:

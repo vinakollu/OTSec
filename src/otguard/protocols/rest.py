@@ -1,4 +1,4 @@
-"""The site controller's REST API — the modern way into an OT network.
+"""The site controller's REST API, the modern way into an OT network.
 
 Every current site controller ships an HTTP API for dispatch, configuration and
 diagnostics, and it is usually the *newest* attack surface on a site that is
@@ -7,7 +7,7 @@ most likely to reach, because it is the interface that has been deliberately
 exposed to schedulers, market systems and vendor support.
 
 The interesting property is that REST is *better* authenticated than Modbus or
-DNP3 — there is a bearer token, there is TLS, there are roles — and that this
+DNP3, there is a bearer token, there is TLS, there are roles, and that this
 does not help as much as it looks. Three reasons, each of which shows up as an
 attack in the evaluation:
 
@@ -28,7 +28,7 @@ The guard's answer to all three is to treat a REST write exactly like a register
 write: same rules, same physics, same provenance check. A limit is checkable
 against the transformer nameplate, which no token can raise.
 
-This models the API rather than serving it — requests are objects, not sockets.
+This models the API rather than serving it, requests are objects, not sockets.
 The authentication and role logic is real enough to express the attacks; it is
 not a hardened HTTP stack and should not be read as one.
 """
@@ -128,7 +128,7 @@ ENDPOINTS: tuple[Endpoint, ...] = (
 
 
 def issue_token(secret: bytes, subject: str, role: Role, zone: str, t: float = 0.0) -> Token:
-    """Mint a token. The digest is decorative — the role and zone are the payload."""
+    """Mint a token. The digest is decorative, the role and zone are the payload."""
     material = f"{subject}:{role.value}:{zone}:{t}".encode()
     digest = hmac.new(secret, material, hashlib.sha256).hexdigest()[:32]
     return Token(value=digest, role=role, zone=zone, issued_t=t, subject=subject)
@@ -152,7 +152,7 @@ class SiteControllerApi:
     Deliberately permissive in one specific way: once a request authenticates
     and carries a sufficient role, this API applies it. It does *not*
     second-guess whether raising the export limit to 40 MW is sensible. That is
-    the realistic behaviour — and it is why the guard has to see these calls
+    the realistic behaviour, and it is why the guard has to see these calls
     rather than trusting the controller to police itself.
     """
 
@@ -200,7 +200,7 @@ class SiteControllerApi:
         return ApiCall(request, endpoint, token, True, True)
 
     def apply(self, call: ApiCall) -> Response:
-        """Apply an authorised call. No plausibility checking — see class docs."""
+        """Apply an authorised call. No plausibility checking, see class docs."""
         self.log.append(call)
         if not call.authenticated:
             return Response(401, {"error": call.reason})

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run the incident catalogue and write the coverage report.
 
-    python scripts/run_incidents.py                 # tank and site evidence only
+    python scripts/run_incidents.py                 # works and site evidence only
     python scripts/run_incidents.py --matrix        # also the device-matrix pairs
     python scripts/run_incidents.py --only oldsmar triton
 

@@ -9,7 +9,7 @@ Answers sized for the proposal and the two presentations. Numbers are from
 
 Factories, water plants and power utilities run on old industrial controllers
 that were built decades ago with no security in them. They usually cannot be
-patched or replaced — they are expensive, certified, and swapping one out means
+patched or replaced, they are expensive, certified, and swapping one out means
 shutting down production.
 
 If an attacker takes over the operator's computer, they can tell the controller
@@ -17,8 +17,8 @@ to open a valve or run a pump, and it will do it, because doing what it is told
 is the only thing it knows how to do.
 
 I am building a small device that sits on the cable between the operator's
-computer and the controller. It knows the basic physics of the process — how
-fast a tank can fill, how fast it can drain — and it checks every command
+computer and the controller. It knows the basic physics of the process, how
+fast a tank can fill, how fast it can drain, and it checks every command
 against that. If a command would do something the physical process should not do,
 it refuses it or shuts the process down safely.
 
@@ -49,7 +49,7 @@ command is *physically sensible given where the process actually is*.
 
 A tank cannot go from empty to full in a second. A pump running against a closed
 outlet has to put the water somewhere. These are not policies an attacker can
-argue with — they are the plant.
+argue with, they are the plant.
 
 This is the same move the course's BFT++ example makes: rather than detect
 malicious software, which is hard and never complete, lean on physics, inertia
@@ -74,7 +74,7 @@ the only class of security control they can realistically deploy.
 
 The difference, measured: across seven attack scenarios, six caused physical
 damage with the guard removed, and five of those six did no damage with it in
-place — including one where the operator's level display was frozen by the
+place, including one where the operator's level display was frozen by the
 attacker throughout. The sixth is the stealthy-bias case in question 8.
 
 The secondary contribution is the negative result. Quantifying the band where a
@@ -95,7 +95,7 @@ and does not buy them, which is more useful than a detection percentage.
 ### 6. How much will it cost? / How long will it take?
 
 Roughly 120–150 hours across the term, alongside three other courses. Structured
-so it degrades gracefully — a bad week costs a feature, not the project:
+so it degrades gracefully, a bad week costs a feature, not the project:
 
 | Phase | Hours | Deliverable |
 | --- | --- | --- |
@@ -104,9 +104,9 @@ so it degrades gracefully — a bad week costs a feature, not the project:
 | Rules + state estimator | 35 | R1–R5, Kalman filter, supervision |
 | Attack + benign scenarios | 20 | 7 attacks, 5 benign transients, labelled |
 | Evaluation + tuning | 25 | the three numbers, plus the stealth sweep |
-| Writing (proposal, 5 progress reports, final, 2 talks) | 40–50 | — |
+| Writing (proposal, 5 progress reports, final, 2 talks) | 40–50 |, |
 
-The guaranteed baseline — proxy plus range and rate checks — was reachable
+The guaranteed baseline, proxy plus range and rate checks, was reachable
 early; the state estimator, R4/R5 and the stealth sweep were layered on top.
 
 ### 7. What are the midterm and final "exams" to check for success?
@@ -117,14 +117,14 @@ handful of scenarios. Achieved.
 
 **Final:** the three numbers, each with its counterfactual:
 
-1. **Detection rate** — 85.7% (6/7 attack scenarios); **damage avoidance** 83.3%
+1. **Detection rate**, 85.7% (6/7 attack scenarios); **damage avoidance** 83.3%
    (5/6 attacks that caused damage unguarded).
-2. **False-alarm rate** — 0% of benign scenarios; 0 of 181 benign writes blocked.
-3. **Added latency** — p50 49 µs, p99 125 µs decision cost; 170–280 µs added
+2. **False-alarm rate**, 0% of benign scenarios; 0 of 181 benign writes blocked.
+3. **Added latency**, p50 49 µs, p99 125 µs decision cost; 170–280 µs added
    round-trip on the wire.
 
 Plus a characterised failure mode (question 8) and a reproducible harness: one
-command regenerates every number and figure, and 178 tests pin the behaviour —
+command regenerates every number and figure, and 216 tests pin the behaviour,
 including two that guard the *evaluation* itself, so a benign scenario cannot
 quietly drift into genuinely unsafe territory and score a correct trip as a false
 alarm.
@@ -141,7 +141,7 @@ detector's threshold and wins. Sweeping the ramp rate:
 | 3.0–5.0 mm/s | after 147–246 s | detected, but too late |
 | 10–50 mm/s | after 1–16 s | prevented |
 
-There is a band — about 2–5 mm/s in this configuration — where the attack both
+There is a band, about 2–5 mm/s in this configuration, where the attack both
 evades detection and does real damage.
 
 This is not a tuning error and no threshold setting removes it. It is the
@@ -151,7 +151,7 @@ is the number that decides whether the guard stays installed. A residual detecto
 bounds an attacker's *rate*, not their eventual displacement.
 
 Closing the band requires information this design does not have: a second,
-physically independent measurement — a flow totaliser cross-checked against the
+physically independent measurement, a flow totaliser cross-checked against the
 level, or a redundant transmitter on a separate path. That is the clearest
 direction for future work, and it is a design change rather than a parameter
 change.

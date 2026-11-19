@@ -4,7 +4,7 @@ The structure is the Modbus proxy's: listen, accept, relay to the device,
 inspect every write on the way past, and run a second session of the guard's own
 to poll the process and issue protective writes. What is new is that how much
 of that works now depends on a setting neither the guard nor the attacker
-controls — the security mode the device and its client negotiated.
+controls, the security mode the device and its client negotiated.
 
 Three modes, three different guards:
 
@@ -264,7 +264,7 @@ class OpcUaGuardProxy:
         A frame is judged as a unit and refused as a unit. That has an honest
         cost: a legitimate value bundled into the same frame as a bad one is
         refused with it. The same is true of the Modbus write-multiple case and
-        for the same reason — the guard cannot half-forward a request.
+        for the same reason, the guard cannot half-forward a request.
         """
         now = self._now()
         record = WriteRecord(t=now, readable=True, forwarded=True)
@@ -458,7 +458,7 @@ class OpcUaGuardProxy:
         """The blind detector: message arrivals, which no mode hides.
 
         Only consulted when the channel is encrypted, because when the guard can
-        read the traffic R2 does this job properly — per source, over writes
+        read the traffic R2 does this job properly, per source, over writes
         only, and able to say which actuator was being hammered.
         """
         now = self._now()
@@ -495,7 +495,7 @@ class OpcUaGuardProxy:
         detail = record.detail or "refused write"
         self.stats.sever_reason = (
             detail if self.mode.can_rewrite
-            else f"{detail} — signed channel, so the only refusal left is to cut it"
+            else f"{detail}, signed channel, so the only refusal left is to cut it"
         )
         with contextlib.suppress(Exception):
             channel.client_writer.close()

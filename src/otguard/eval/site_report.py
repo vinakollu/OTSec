@@ -111,7 +111,7 @@ def format_sweep_bias(points: list[SweepPoint], control: list[SweepPoint] | None
         lines.append(f"{p.parameter * 1000:>13.2f}{detected:>12}{bias:>13}  {p.named_source or '-'}")
 
     if control:
-        lines += ["", "Control — the same attack with voting disabled:"]
+        lines += ["", "Control, the same attack with voting disabled:"]
         for p in control:
             lines.append(
                 f"{p.parameter * 1000:>13.2f}"
@@ -144,7 +144,7 @@ def format_sweep_soc(held: list[SweepPoint], transient: list[SweepPoint]) -> str
         "B2: a battery-management re-anchor against a sustained spoof",
         "-" * 78,
         "Both are a step followed by an offset. What separates them is persistence,",
-        "not size — the CUSUM only accumulates while the disagreement continues.",
+        "not size, the CUSUM only accumulates while the disagreement continues.",
         "",
         f"{'offset':>9}{'held (spoof)':>16}{'one sample (re-anchor)':>26}",
     ]

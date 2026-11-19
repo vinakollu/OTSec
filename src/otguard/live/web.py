@@ -4,8 +4,8 @@ Hand-rolled on ``asyncio.start_server`` rather than built on
 :mod:`http.server`, for one reason: the stock server is synchronous and
 threaded, so feeding it would mean handing events across a thread boundary
 while a control loop is running on this side of it. Everything else in this
-project already frames its own protocol — Modbus, DNP3, GOOSE, the OPC UA
-transport — and HTTP/1.1 for two GET routes is the smallest of them.
+project already frames its own protocol, Modbus, DNP3, GOOSE, the OPC UA
+transport, and HTTP/1.1 for two GET routes is the smallest of them.
 
 It serves exactly what it needs to and refuses the rest:
 

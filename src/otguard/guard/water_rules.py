@@ -34,6 +34,8 @@ W7 is interlocks and W8 is provenance.
 
 from __future__ import annotations
 
+import math
+
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -67,7 +69,7 @@ class WaterRule(Protocol):
 
 
 # ----------------------------------------------------------------------
-# W1 — the equipment's own rating
+# W1, the equipment's own rating
 # ----------------------------------------------------------------------
 #: What each point can physically be, regardless of what anybody wants.
 RANGES: dict[WaterCommandKind, tuple[float, float]] = {
@@ -115,8 +117,21 @@ class RangeRule:
 
 
 # ----------------------------------------------------------------------
-# W2 — a dose is only sane relative to the water
+# W2, a dose is only sane relative to the water
 # ----------------------------------------------------------------------
+def _least_decay(ctx: "WaterContext") -> float:
+    """How little chlorine the works could lose before the analyser.
+
+    Decay over the shortest contact time the clearwell can produce: its
+    minimum level, emptied at the fastest the high-lift pumps run. Anything
+    authorised against this stays authorised when somebody opens the pumps.
+    """
+    useful = (ctx.safety.clearwell_min_m * ctx.works.clearwell_area_m2
+              * ctx.works.clearwell_baffle_factor)
+    contact_min = (useful / max(ctx.works.max_high_lift_flow_m3h, 1.0)) * 60.0
+    return math.exp(-ctx.works.chlorine_decay_per_min * contact_min)
+
+
 class DoseRule:
     """W2: chemical doses measured against what this water actually needs.
 
@@ -138,13 +153,25 @@ class DoseRule:
         kind = command.kind
 
         if kind is WaterCommandKind.MAX_CHLORINE_DOSE:
-            safe_ceiling = ctx.safety.residual_max_mg_l + est.chlorine_demand()
+            # A dose is measured at the injector and the limit applies at the
+            # analyser, and chlorine decays on the way between them. Comparing
+            # the two directly refused the ceiling this works already runs at,
+            # which is the same error the cross-instrument rule carried until
+            # the decay was put into it.
+            #
+            # The decay used here is the least the works could give, not the
+            # decay it happens to be giving now: an attacker who collapses the
+            # contact time shortens the journey, and a ceiling authorised
+            # against a long contact would then permit a residual the long
+            # contact was the only thing holding down.
+            safe_ceiling = ctx.safety.residual_max_mg_l / _least_decay(ctx)
+            safe_ceiling += est.chlorine_demand()
             if command.value > safe_ceiling:
                 return RuleFinding(
                     self.rule_id, self.name,
                     f"a chlorine ceiling of {command.value:g} mg/L would permit water "
-                    f"to leave above the {ctx.safety.residual_max_mg_l:g} mg/L limit; "
-                    f"this water needs {est.chlorine_demand():.2f} mg/L, so nothing "
+                    f"to leave above the {ctx.safety.residual_max_mg_l:g} mg/L limit. "
+                    f"This water needs {est.chlorine_demand():.2f} mg/L, so nothing "
                     f"above {safe_ceiling:.2f} mg/L is authorisable by anyone",
                     margin=command.value - safe_ceiling,
                 )
@@ -159,7 +186,7 @@ class DoseRule:
                 return RuleFinding(
                     self.rule_id, self.name,
                     f"a caustic ceiling of {command.value:g} mg/L would permit a pH "
-                    f"above {ctx.safety.ph_max:g}; the water is at pH "
+                    f"above {ctx.safety.ph_max:g}. The water is at pH "
                     f"{est.state.ph:.2f} and has {ph_room:.2f} of room",
                     margin=command.value - safe_ceiling,
                 )
@@ -186,7 +213,7 @@ class DoseRule:
                     self.rule_id, self.name,
                     f"a coagulant dose of {command.value:g} mg/L is "
                     f"{command.value / needed:.1f} times what water at "
-                    f"{est.state.raw_turbidity_ntu:.1f} NTU needs; overdosing carries "
+                    f"{est.state.raw_turbidity_ntu:.1f} NTU needs. Overdosing carries "
                     f"floc through the filters instead of settling it",
                     margin=command.value - needed * self.tolerance,
                 )
@@ -195,7 +222,7 @@ class DoseRule:
 
 
 # ----------------------------------------------------------------------
-# W3 — run the works forward under this command
+# W3, run the works forward under this command
 # ----------------------------------------------------------------------
 class ConsequenceRule:
     """W3: where does the water end up if this command sticks?"""
@@ -298,7 +325,7 @@ class ConsequenceRule:
 
 
 # ----------------------------------------------------------------------
-# W4 — three instruments, one chemistry
+# W4, three instruments, one chemistry
 # ----------------------------------------------------------------------
 class CrossInstrumentRule:
     """W4: the dose, the flow and the residual have to tell the same story."""
@@ -324,7 +351,7 @@ class CrossInstrumentRule:
             return None
         return RuleFinding(
             self.rule_id, self.name,
-            f"the dose pump and the residual analyser disagree by {gap:.2f} mg/L; "
+            f"the dose pump and the residual analyser disagree by {gap:.2f} mg/L. "
             f"the {suspect} is the one that does not fit the other two, so this "
             f"command is being judged on a reading the guard does not trust",
             margin=gap,
@@ -332,7 +359,7 @@ class CrossInstrumentRule:
 
 
 # ----------------------------------------------------------------------
-# W5 — conservation of water
+# W5, conservation of water
 # ----------------------------------------------------------------------
 class MassBalanceRule:
     """W5: what goes in, minus what comes out, is what the tank level says."""
@@ -357,14 +384,14 @@ class MassBalanceRule:
         return RuleFinding(
             self.rule_id, self.name,
             f"the flow meters say the works is gaining {implied:.0f} m³/h but the "
-            f"stored volume is changing at {change_m3h:.0f} m³/h; one of the two "
+            f"stored volume is changing at {change_m3h:.0f} m³/h. One of the two "
             f"is wrong by {gap:.0f} m³/h",
             margin=gap - self.tolerance_m3h,
         )
 
 
 # ----------------------------------------------------------------------
-# W7 — interlocks
+# W7, interlocks
 # ----------------------------------------------------------------------
 class InterlockRule:
     """W7: sequences that are unsafe whatever the numbers say."""
@@ -381,7 +408,7 @@ class InterlockRule:
                 return RuleFinding(
                     self.rule_id, self.name,
                     "backwash was commanded while the filter is still in service and "
-                    f"passing {b.raw_flow_m3h:.0f} m³/h; the wash water would go "
+                    f"passing {b.raw_flow_m3h:.0f} m³/h. The wash water would go "
                     "straight to the clearwell",
                 )
 
@@ -391,7 +418,7 @@ class InterlockRule:
                     self.rule_id, self.name,
                     f"the high-lift pumps were commanded to {command.value:g}% with "
                     f"only {b.clearwell_level_m:.2f} m in the clearwell, below the "
-                    f"{ctx.safety.clearwell_min_m:g} m minimum; the pumps would run dry",
+                    f"{ctx.safety.clearwell_min_m:g} m minimum. The pumps would run dry",
                     margin=ctx.safety.clearwell_min_m - b.clearwell_level_m,
                 )
 
@@ -407,7 +434,7 @@ class InterlockRule:
 
 
 # ----------------------------------------------------------------------
-# W8 — who is allowed to write this
+# W8, who is allowed to write this
 # ----------------------------------------------------------------------
 class ProvenanceRule:
     """W8: the point, the device and the zone have to be consistent.
@@ -436,7 +463,7 @@ class ProvenanceRule:
             return RuleFinding(
                 self.rule_id, self.name,
                 f"{command.kind.label} is a configuration change and arrived from the "
-                f"supervisory zone; limits are changed from engineering, under a work "
+                f"supervisory zone. Limits are changed from engineering, under a work "
                 f"order, not from an operator screen",
             )
         if command.device and not ctx.topology.may_write(command.device, command.kind):
@@ -448,7 +475,7 @@ class ProvenanceRule:
 
 
 # ----------------------------------------------------------------------
-# W6 — the lockout, after the guard has had to act
+# W6, the lockout, after the guard has had to act
 # ----------------------------------------------------------------------
 class LockoutRule:
     """W6: once the guard has tripped, the source that caused it stays out.
@@ -467,7 +494,7 @@ class LockoutRule:
         if command.kind.role in (PointRole.DOSE, PointRole.ACTUATOR, PointRole.LIMIT):
             return RuleFinding(
                 self.rule_id, self.name,
-                "the guard has taken protective action and is holding the plant; "
+                "the guard has taken protective action and is holding the plant. "
                 "an operator has to acknowledge before commands are accepted again",
             )
         return None

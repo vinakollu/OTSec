@@ -1,7 +1,7 @@
 """The physics-plausibility guard: estimators, rules and decision engines.
 
 Two plants, two rule sets, one idea. The storage site's B1 to B8 judge power,
-charge, temperature and provenance; the treatment works' W1 to W8 judge doses,
+charge, temperature and provenance. The treatment works' W1 to W8 judge doses,
 flows and the contact time nobody measures. Both reach a decision the same
 way, against the same :class:`Verdict`, which is what lets one evaluation and
 one display serve both.

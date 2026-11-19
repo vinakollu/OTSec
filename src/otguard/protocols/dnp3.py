@@ -1,9 +1,9 @@
-"""DNP3 (IEEE 1815) — the subset a storage site actually uses for control.
+"""DNP3 (IEEE 1815), the subset a storage site actually uses for control.
 
 Scope, stated plainly because "we implemented DNP3" would be an overclaim: this
 encodes and decodes real link-layer frames with the standard CRC, the transport
 segment header, and the application header, plus the two object groups that
-carry control — g12v1 control relay output blocks and g41 analog output blocks.
+carry control, g12v1 control relay output blocks and g41 analog output blocks.
 It does not implement event classes, time synchronisation, file transfer, or
 Secure Authentication v5. That is enough to build and inspect the frames the
 attacks in this project use, and no more.
@@ -19,7 +19,7 @@ Why that matters here: SBO is the one place where the *protocol* carries a
 plausibility constraint of the same shape as the physics rules. The outstation
 does not need to know whether opening the breaker is wise; it only needs to know
 that nobody armed it. DNP3 also ships with no authentication in this profile,
-which is exactly why a bump-in-the-wire is the practical control — you cannot
+which is exactly why a bump-in-the-wire is the practical control, you cannot
 add SAv5 to a meter that does not speak it.
 """
 
@@ -34,7 +34,7 @@ START_BYTES = b"\x05\x64"
 
 # CRC over each block is the CCITT-style polynomial DNP3 specifies (0x3D65,
 # reflected). It is not the same polynomial as Modbus and not the same as
-# X.25 — getting it wrong produces frames that look right and are rejected by
+# X.25, getting it wrong produces frames that look right and are rejected by
 # every real outstation, so there is a known-answer test against the canonical
 # reset-link frame in the test suite.
 _CRC_POLY = 0xA6BC  # 0x3D65 bit-reversed
@@ -103,7 +103,7 @@ class Status(IntEnum):
 
 @dataclass(frozen=True)
 class CROB:
-    """Group 12 variation 1 — control relay output block."""
+    """Group 12 variation 1, control relay output block."""
 
     control_code: ControlCode
     index: int
@@ -130,7 +130,7 @@ class CROB:
 
 @dataclass(frozen=True)
 class AnalogOutput:
-    """Group 41 variation 3 — 32-bit float analog output block.
+    """Group 41 variation 3, 32-bit float analog output block.
 
     Set-points on a storage site are floats (megawatts, megavars), so the
     float variation is the one that carries dispatch. Variation 1 (32-bit
@@ -157,8 +157,8 @@ class ApplicationPdu:
     ``function`` is an ``int`` rather than a ``FunctionCode`` so that an
     unrecognised code decodes instead of raising. That is not tidiness: a guard
     sitting in the traffic path must be able to look at a frame carrying a
-    function code it has never seen — a corrupted byte, a vendor extension, or
-    deliberate garbage — and make a decision about it. Raising here would turn
+    function code it has never seen, a corrupted byte, a vendor extension, or
+    deliberate garbage, and make a decision about it. Raising here would turn
     any malformed frame into a crash of the thing protecting the site, which is
     a denial-of-service vector rather than a parser edge case.
     """
@@ -259,7 +259,7 @@ def build_frame(
     Layout: start, header block (8 bytes + CRC), then the transport octet and
     application payload split into 16-byte data blocks, each with its own CRC.
     ``length`` counts the header bytes after the length field plus the user
-    data, excluding CRCs — the definition in the standard that is easiest to
+    data, excluding CRCs, the definition in the standard that is easiest to
     get wrong.
     """
     body = bytes([transport]) + payload
@@ -364,7 +364,7 @@ class SelectBeforeOperate:
 
     * nothing was selected for that point,
     * the selection has aged out (``timeout_s``, 10 s in most profiles),
-    * the OPERATE's object bytes differ from the SELECT's — arming "close" and
+    * the OPERATE's object bytes differ from the SELECT's, arming "close" and
       firing "trip", or arming 5 MW and firing 25 MW.
 
     The third is the one worth having: an attacker who can see a legitimate
@@ -401,7 +401,7 @@ class SelectBeforeOperate:
         """DIRECT_OPERATE skips the handshake by design.
 
         Permitted by the standard and widely used for non-critical points. It
-        is recorded rather than rejected here — whether a *breaker* should be
+        is recorded rather than rejected here, whether a *breaker* should be
         reachable by direct operate is a policy question the guard answers, not
         a protocol violation the outstation can detect.
         """

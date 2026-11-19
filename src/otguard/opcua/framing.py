@@ -24,7 +24,7 @@ message: what kind of message it is, how long it is, and which channel and key
 it belongs to. It cannot read the request id, so it cannot even pair a response
 with a request.
 
-Under ``Sign`` nothing is encrypted and all of it is readable — but the last
+Under ``Sign`` nothing is encrypted and all of it is readable, but the last
 bytes of each message are a signature over the whole of it, which the guard
 cannot recompute. It can read every write and refuse none of them, because any
 frame it fabricates or renumbers fails the other end's signature check.

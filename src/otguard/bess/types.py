@@ -3,8 +3,8 @@
 The water-tank guard has one actuator pair and one sensor. A storage site has a
 fleet of inverters, three independent ways of measuring the same power, and a
 switchyard, so the command and observation types have to carry a *device* and a
-*measurement source* alongside the value. Everything else — ``Decision``,
-``RuleFinding``, ``Verdict`` — is reused unchanged from :mod:`otguard.guard`,
+*measurement source* alongside the value. Everything else, ``Decision``,
+``RuleFinding``, ``Verdict``, is reused unchanged from :mod:`otguard.guard`,
 which is the payoff for having kept those protocol-agnostic.
 
 Sign convention, fixed once here because getting it wrong silently inverts every
@@ -62,7 +62,7 @@ class MeasurementSource(str, Enum):
 
     These three are physically independent: different current transformers,
     different cabling, different protocol stacks, different vendors. That
-    independence is the whole basis of rule B6 — an attacker who compromises the
+    independence is the whole basis of rule B6, an attacker who compromises the
     revenue meter cannot also make the relay's CTs lie, so the disagreement is
     the tell.
     """
@@ -91,7 +91,7 @@ class SiteCommand:
 
     ``device`` is the Megapack id for per-pack commands (``"MP03"``) and the
     empty string for site-wide ones. ``zone`` and ``conduit`` describe where the
-    write entered from; they are what B8 adjudicates and what a firewall or jump
+    write entered from. They are what B8 adjudicates and what a firewall or jump
     server would populate in a real deployment.
     """
 
@@ -114,7 +114,7 @@ class PackReport:
     """What one Megapack says about itself.
 
     Under a false-data-injection attack this is what the *attacker* says the pack
-    is doing; :class:`~otguard.bess.site.PackState` is what it is really doing.
+    is doing. :class:`~otguard.bess.site.PackState` is what it is really doing.
     Telling those apart is rule B2's job.
     """
 
@@ -133,7 +133,7 @@ class SiteObservation:
 
     Carries all three power measurements so the guard can compare them. A real
     deployment collects these over three different protocols on three different
-    conduits; the guard does not care which, only that they should agree.
+    conduits. The guard does not care which, only that they should agree.
     """
 
     t: float

@@ -7,7 +7,7 @@ second however fast the episode is actually running.
 
 The attacks are chosen to separate two things the three security modes affect
 differently: whether the guard can *read* a command, and whether the command
-moves the process. An attack that does both is the easy case — even a blind
+moves the process. An attack that does both is the easy case, even a blind
 guard sees the level go wrong. The interesting cells are the attacks that move
 nothing measurable, because those are the ones that disappear completely when
 the channel is encrypted.
@@ -138,7 +138,7 @@ async def operator(client: Client, clock: SimClock, stats: MasterStats,
     It stands down during ``stand_down``. Under this project's threat model
     the attacker has the station, so the legitimate loop is not also using it.
     Leaving it running means the honest loop fights the attack for the same
-    set-point and neutralises it — the attack is then stopped by its victim
+    set-point and neutralises it, the attack is then stopped by its victim
     rather than by the guard, which flatters the guard without anyone
     noticing. The loop comes back when the window closes, and whether it can
     still write at that point is the measurement: a guard that refused by
@@ -195,7 +195,7 @@ async def export_over_limit(client: Client, clock: SimClock, stats: MasterStats,
     The value is inside what the batteries can produce and nothing about the
     write is anomalous. Only the consequence is, which is the argument for
     physics rules in the first place, and it is also the one attack a blind
-    guard can still catch — because the consequence is in the power it polls
+    guard can still catch, because the consequence is in the power it polls
     itself.
     """
     stats.attempted += 1
@@ -315,7 +315,7 @@ async def recon_browse(client: Client, clock: SimClock, stats: MasterStats,
 #: The split is not a convenience. An attack that writes the same actuator the
 #: operator's loop is regulating needs the loop to stand down, or the two fight
 #: and the attack fails for the wrong reason. An attack that works *through*
-#: the loop — tampering with the target it aims at, or only reading — needs the
+#: the loop, tampering with the target it aims at, or only reading, needs the
 #: loop running, because the loop is the mechanism.
 @dataclass(frozen=True)
 class AttackSpec:

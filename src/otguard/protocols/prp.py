@@ -1,9 +1,9 @@
-"""PRP (IEC 62439-3) — parallel redundancy, and what it gives security for free.
+"""PRP (IEC 62439-3), parallel redundancy, and what it gives security for free.
 
 PRP is an availability mechanism. A sending node puts *the same frame on two
 independent LANs* at the same instant; the receiver takes whichever copy arrives
 first and discards the duplicate. There is no failover delay because there was
-never a failure to detect — both paths were always carrying the traffic.
+never a failure to detect, both paths were always carrying the traffic.
 
 Each copy carries a 6-octet Redundancy Control Trailer appended after the
 payload:
@@ -16,7 +16,7 @@ The sequence number is per-source and shared between the two copies, which is
 what lets the receiver pair them up.
 
 The security consequence is the reason this module exists. An attacker is
-almost always on *one* LAN — they compromised a switch, or patched into one
+almost always on *one* LAN, they compromised a switch, or patched into one
 ring, or spoofed from a host with a single connection. When they inject a frame,
 it appears on LAN A with no matching copy on LAN B; when they modify a frame in
 transit, the two copies disagree at the same sequence number. Neither is subtle,
@@ -28,8 +28,8 @@ comparing two network paths. Both work because the attacker has to compromise
 every independent copy simultaneously to stay consistent, and independence is
 expensive to defeat.
 
-The honest limit: an attacker positioned to inject on both LANs — a compromised
-end node, or a doubly-attached device — produces two consistent copies and
+The honest limit: an attacker positioned to inject on both LANs, a compromised
+end node, or a doubly-attached device, produces two consistent copies and
 defeats this entirely. PRP raises the bar to "compromise both paths", it does
 not authenticate anything.
 """
@@ -122,7 +122,7 @@ class PrpNode:
     answer "did the second copy say the same thing?", and reports a frame that
     arrived on only one LAN once the pairing window closes.
 
-    Both of those are free — the frames are already being received and already
+    Both of those are free, the frames are already being received and already
     being compared by sequence number. That is what makes PRP attractive as a
     detection surface: the redundancy is being paid for on availability grounds
     whether or not anyone uses it for security.
@@ -178,7 +178,7 @@ class PrpNode:
                     "content_mismatch",
                     f"LAN A and LAN B disagree at sequence {seq}: "
                     f"{len(pending.payload)}B vs {len(payload)}B, "
-                    f"differing from octet {_first_difference(pending.payload, payload)} — "
+                    f"differing from octet {_first_difference(pending.payload, payload)}, "
                     f"one path has been modified in transit",
                     seq,
                     lan,
@@ -202,7 +202,7 @@ class PrpNode:
                 PrpAnomaly(
                     "single_lan",
                     f"sequence {seq} arrived only on LAN {pending.lan.name}; "
-                    f"no matching copy within {self.pair_window_s * 1000:.0f} ms — "
+                    f"no matching copy within {self.pair_window_s * 1000:.0f} ms, "
                     f"injected on one path, or that path has failed",
                     seq,
                     pending.lan,
@@ -237,7 +237,7 @@ class PrpLink:
         return a, b
 
     def inject(self, payload: bytes, t: float, lan: LanId, sequence: int | None = None) -> bytes:
-        """Put a frame on one LAN only — what an attacker on a single path does."""
+        """Put a frame on one LAN only, what an attacker on a single path does."""
         seq = self.sequence + 1 if sequence is None else sequence
         frame = append_rct(payload, seq, lan)
         (self.lan_a if lan is LanId.A else self.lan_b).append((t, frame))

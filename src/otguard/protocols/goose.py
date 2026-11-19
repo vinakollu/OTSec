@@ -1,8 +1,8 @@
-"""IEC 61850 GOOSE — publisher, subscriber and the state-number semantics.
+"""IEC 61850 GOOSE, publisher, subscriber and the state-number semantics.
 
 GOOSE carries protection signals between bays on a substation LAN: a trip, a
 breaker position, an interlock. It is layer-2 multicast with no routing, no
-handshake and — in the base profile — no authentication, which is why it is both
+handshake and, in the base profile, no authentication, which is why it is both
 the fastest way to move a trip and the easiest thing on the site to forge.
 
 What makes it checkable without cryptography is the retransmission scheme.
@@ -22,19 +22,19 @@ things an attacker has to get right, and each failure is detectable:
 * **Replay.** Re-sending a captured trip frame carries its original ``stNum``,
   which the subscriber has already seen and passed. Stale by inspection.
 * **Takeover.** Injecting with a large ``stNum`` jump wins the race against the
-  real publisher, but the jump itself is the signature — real state changes do
+  real publisher, but the jump itself is the signature, real state changes do
   not skip a thousand counts.
 * **Silence.** Suppressing the real publisher trips ``timeAllowedToLive``, so
   the subscriber knows it is blind rather than quiet.
 
 None of that authenticates anything. A patient attacker who increments by one
 and matches the timing is indistinguishable at this layer, which is the honest
-limit of counter-based checks — and the reason the guard cross-checks a trip
+limit of counter-based checks, and the reason the guard cross-checks a trip
 against measured fault current (rule B7) rather than trusting the frame.
 
 Transport note: GOOSE is raw layer-2 and needs ``AF_PACKET`` and root to put on
-a real wire. The frames built here are byte-exact — a capture would decode in
-Wireshark — but the link is an in-process virtual segment
+a real wire. The frames built here are byte-exact, a capture would decode in
+Wireshark, but the link is an in-process virtual segment
 (:class:`VirtualEthernet`) rather than a NIC. What is being evaluated is the
 subscriber logic and the guard's use of it, not the kernel's packet path.
 """
@@ -403,7 +403,7 @@ class GooseSubscriber:
             found.append(
                 GooseAnomaly(
                     "replay",
-                    f"stNum {pdu.st_num} is behind the last accepted {state.st_num} — "
+                    f"stNum {pdu.st_num} is behind the last accepted {state.st_num}, "
                     f"a frame this subscriber has already processed",
                     pdu.gocb_ref,
                     pdu.st_num,
@@ -447,7 +447,7 @@ class GooseSubscriber:
     def check_liveness(self, t: float) -> list[GooseAnomaly]:
         """Report publishers whose timeAllowedToLive has expired.
 
-        A subscriber that stops hearing its publisher is not in a safe state —
+        A subscriber that stops hearing its publisher is not in a safe state,
         it is blind. Saying so is the difference between a suppressed trip and a
         quiet network.
         """
@@ -459,7 +459,7 @@ class GooseSubscriber:
                     GooseAnomaly(
                         "timeout",
                         f"no frame for {age_ms:.0f} ms, exceeding timeAllowedToLive "
-                        f"{state.ttl_ms} ms — the publisher is unreachable or suppressed",
+                        f"{state.ttl_ms} ms, the publisher is unreachable or suppressed",
                         ref,
                         state.st_num,
                         state.sq_num,

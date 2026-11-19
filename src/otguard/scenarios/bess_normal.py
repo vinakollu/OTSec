@@ -15,7 +15,7 @@ The only thing separating them is grid frequency, which is what B4 conditions
 on. If B4 is wrong in either direction, one of this pair is scored incorrectly.
 
 ``soc_recalibration`` is a legitimate discontinuity in reported state of charge
-— real battery management systems re-anchor their estimate when a pack reaches a
+- real battery management systems re-anchor their estimate when a pack reaches a
 known point, and the correction can be several percent in a single sample. It
 looks precisely like the opening move of ``soc_spoof``.
 """
@@ -92,7 +92,7 @@ def thermal_derate_day() -> SiteScenario:
 
     The temperatures climb into the derate band and the dispatch controller
     reduces set-points accordingly. Everything here is the system working as
-    designed, and B5 must stay quiet through all of it — the trajectory never
+    designed, and B5 must stay quiet through all of it, the trajectory never
     reaches the trip, and the commands that reduce power are improvements on what
     is held, not degradations.
     """
@@ -100,7 +100,7 @@ def thermal_derate_day() -> SiteScenario:
         name="thermal_derate_day",
         category="normal",
         description=(
-            "Sustained high output on a hot day; units enter thermal derate and the "
+            "Sustained high output on a hot day. Units enter thermal derate and the "
             "controller reduces set-points in response."
         ),
         duration_s=1800.0,
@@ -113,7 +113,7 @@ def thermal_derate_day() -> SiteScenario:
 
 
 def pack_maintenance() -> SiteScenario:
-    """Three units taken out of service; the rest pick up the load.
+    """Three units taken out of service. The rest pick up the load.
 
     The aggregate changes for an entirely legitimate reason, and the remaining
     units' set-points all rise at once. A balance rule that reasoned about
@@ -145,7 +145,7 @@ def pack_maintenance() -> SiteScenario:
 def soc_recalibration() -> SiteScenario:
     """A legitimate step change in reported state of charge.
 
-    Battery management systems re-anchor their SoC estimate at known points —
+    Battery management systems re-anchor their SoC estimate at known points,
     typically at the top of a charge, where the cell voltage curve is steep
     enough to be informative. The correction lands in one sample and can be
     several percent.
@@ -231,14 +231,14 @@ def curtailment_recovery() -> SiteScenario:
 
     The counterfactual test's reason for existing, and the realistic way a site
     ends up over its limit: not by someone commanding it, but by the limit
-    moving. The site is dispatched to 20 MW, which is legal; the utility then
+    moving. The site is dispatched to 20 MW, which is legal. the utility then
     issues a curtailment order reducing the export limit to 16 MW, and the site
     is instantly non-compliant without a single new set-point.
 
     Every command after that is issued while over the limit, and every one
     *reduces* the excursion. A guard that asked "does this command leave the
     site over the limit?" would block the entire recovery and strand the site
-    outside its new limit — the failure the tank version's R3 was rewritten to
+    outside its new limit, the failure the tank version's R3 was rewritten to
     avoid.
 
     Note what this scenario cannot do: reach the over-limit state by commanding
@@ -264,7 +264,7 @@ def curtailment_recovery() -> SiteScenario:
         name="curtailment_recovery",
         category="normal",
         description=(
-            "Utility cuts the export limit from 20 MW to 16 MW; the operator walks "
+            "Utility cuts the export limit from 20 MW to 16 MW. the operator walks "
             "the fleet down in two steps. Every command is issued while over the "
             "limit and every one improves it."
         ),

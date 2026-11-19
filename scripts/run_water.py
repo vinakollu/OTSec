@@ -3,13 +3,13 @@
 
     python3 scripts/run_water.py
 
-This is the water site and nothing else. The storage tank has its own command
-(``scripts/run_live_demo.py``) and the two are deliberately not combined: they
-are different plants on different timescales, and one page trying to be both
-tells you less about either.
+This is the water site and nothing else. The storage site has its own command
+(``scripts/run_site.py``) and the two are deliberately not combined: they are
+different plants on different timescales, and one page trying to be both tells
+you less about either.
 
 The works starts compliant and running itself. Every command its own control
-issues crosses the guard, which is the traffic that matters most — a guard
+issues crosses the guard, which is the traffic that matters most, a guard
 that objects to a plant operating normally is of no use whatever it catches.
 From the page you can run any of nine attacks, each the shape of a real
 incident, switch the guard between enforcing and watching, and put the works

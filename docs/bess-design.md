@@ -6,8 +6,8 @@ each rule has the shape it does, and where the design fails.
 
 ## Why a battery site, specifically
 
-The tank version ended with a stated limitation. Its `stealthy_bias` attack —
-slowly biasing the level transmitter — was undetectable, and the reason was
+The tank version ended with a stated limitation. Its `stealthy_bias` attack,
+slowly biasing the level transmitter, was undetectable, and the reason was
 structural rather than a matter of tuning:
 
 > Residual detectors bound an attacker's rate, not their eventual displacement.
@@ -16,7 +16,7 @@ structural rather than a matter of tuning:
 
 A storage site has that second measurement, and a third. Site power is measured
 by the POI revenue meter, by the sum of what the Megapacks report, and by the
-protection relay's current transformers — three chains with different hardware,
+protection relay's current transformers, three chains with different hardware,
 different cabling, different vendors and different protocols. That redundancy is
 already paid for on revenue and protection grounds. Using it for detection is
 free, and it is what this add-on is built around.
@@ -58,7 +58,7 @@ your ability to ask the second at all.
 
 ## The site
 
-Sixteen 1.927 MW / 3.916 MWh units — about 30.8 MW of inverter and 62 MWh —
+Sixteen 1.927 MW / 3.916 MWh units, about 30.8 MW of inverter and 62 MWh,
 behind a 20 MW contractual export limit and a 25 MVA transformer.
 
 ```
@@ -105,7 +105,7 @@ protocol compromise can make true.
 **Capability is state-dependent.** Discharge tapers below 10% SoC, charge tapers
 above 90% and again in the cold (charging a cold lithium cell plates lithium
 metal, so the curve is not a mirror image). Both taper with temperature. The
-inverter is bounded by its apparent-power circle, and vars give way to watts —
+inverter is bounded by its apparent-power circle, and vars give way to watts,
 so reactive power cannot be used to smuggle extra real power past a limit.
 
 **Heat follows current and cooling is slow.** Losses go as the square of
@@ -119,7 +119,7 @@ for preventing something that could not have happened.
 
 ### Where damage comes from
 
-Normal full-power operation does not overheat a unit — SoC drains, power falls,
+Normal full-power operation does not overheat a unit, SoC drains, power falls,
 and the pack settles at 44 °C. The reachable thermal vector is **thermal
 management shutdown**: the same duty with cooling commanded off passes the trip
 in about thirty minutes. That is also the realistic one; BESS thermal events come
@@ -134,7 +134,7 @@ from cooling failure, not from dispatch.
 - Lumped single-cell-equivalent per unit. No cell imbalance, no degradation over
   cycles, no inverter switching model.
 - Grid frequency and fault current are exogenous. A 20 MW site does not move a
-  synchronous grid, so treating frequency as an input is honest — and it is what
+  synchronous grid, so treating frequency as an input is honest, and it is what
   gives rule B4 its context.
 - The guard's model of the plant is wrong on purpose, by a few percent in every
   constant. A guard tested against a model identical to the plant measures
@@ -157,7 +157,7 @@ from cooling failure, not from dispatch.
 
 **The counterfactual test (B3, B5).** R3's lesson was that "does this command's
 predicted trajectory violate the limit?" rejects the *corrective* command too,
-because once a process is heading out of bounds every trajectory looks bad —
+because once a process is heading out of bounds every trajectory looks bad,
 including the one that saves it. B3 and B5 object only when a candidate is
 strictly worse than continuing what is already held. This is what lets
 `curtailment_recovery` pass: every command in it is issued while over the limit,
@@ -175,7 +175,7 @@ latched alarm, open-loop dead reckoning once a unit is caught lying.
 ### What is new here
 
 **B3 reasons about the aggregate.** The `aggregate_stealth` attack asks each of
-sixteen units for 1.45 MW — comfortably inside a 1.927 MW capability, and exactly
+sixteen units for 1.45 MW, comfortably inside a 1.927 MW capability, and exactly
 the sort of value a per-device rule waves through. The sum is 23.2 MW against a
 20 MW limit. Only a conservation law across the fleet can see it.
 
@@ -199,7 +199,7 @@ temperature needs no horizon: if the commanded configuration settles beyond the
 trip, the unit gets there eventually however slowly.
 
 **B6 names the liar.** With one sensor, a model-versus-measurement disagreement
-is ambiguous — either the sensor is spoofed or the model is wrong. With three
+is ambiguous, either the sensor is spoofed or the model is wrong. With three
 independent measurements a majority vote identifies the outlier, which is the
 difference between "something is wrong" and "the revenue meter is lying, trust
 the relay". Everything downstream then reads site power through
@@ -214,7 +214,7 @@ meaningless.
 
 ## Results
 
-13 attacks, 7 benign scenarios, each run twice — enforcing, and watching but
+13 attacks, 7 benign scenarios, each run twice, enforcing, and watching but
 powerless.
 
 | Metric | Result |
@@ -230,7 +230,7 @@ Latency is 0.14% of a 100 ms dispatch cycle, over sixteen estimators and eight
 rules.
 
 **Two denominators, as in the tank version.** Suite-wide, 1200 of 7831
-benign-labelled writes are flagged — but nearly all are the site controller's own
+benign-labelled writes are flagged, but nearly all are the site controller's own
 writes *inside attack scenarios*, refused after B2 or B6 has established that a
 unit is lying about its state. Declining to honour set-points for a unit whose
 telemetry is known false is the guard working. Quote the 0/3783 figure for
@@ -249,12 +249,12 @@ benign operation and the 1200/7831 alongside it; neither alone is honest.
 | 5.00 | 78 s | 390 kW | POI meter |
 | 10.0 | 46 s | 455 kW | POI meter |
 | 50.0 | 14 s | 725 kW | POI meter |
-| **1.0, voting disabled** | **never** | — | — |
+| **1.0, voting disabled** | **never** |, |, |
 
 The column that matters is the third. It stays between 262 and 725 kW while the
 ramp rate changes by two and a half orders of magnitude, and the *slowest*
 attacker is caught at the *smallest* displacement. Voting bounds how far an
-attacker can move a measurement, not how fast — which is precisely the bound the
+attacker can move a measurement, not how fast, which is precisely the bound the
 tank version could not achieve, and the control row shows the tank's blind spot
 reproduced when voting is switched off.
 
@@ -274,7 +274,7 @@ also an escape hatch:
 
 At 0.005 MW per unit per 20 s the attack is never detected and puts the site
 2.77 MW over its export limit. Worse, in the band that *is* detected, the site
-still reaches 4.8 MW over the limit first — detection is real but late. Only the
+still reaches 4.8 MW over the limit first, detection is real but late. Only the
 absolute transformer-rating test has no escape hatch, and by construction it does
 not engage until the excursion is large. This is the direct analogue of the tank
 project's 2 mm/s band and it has the same character: no threshold fixes it,
@@ -283,19 +283,19 @@ operators leave the guard installed.
 
 **B2 cannot separate a large re-anchor from a spoof.** Battery management systems
 re-anchor their SoC estimate at known points, and the correction lands in one
-sample. A spoof is the same shape — a step followed by an offset. What separates
+sample. A spoof is the same shape, a step followed by an offset. What separates
 them is persistence: the CUSUM only accumulates while the disagreement continues,
 so a held offset is caught down to 2% within four seconds, while a one-sample
 correction passes up to 6%. A single-sample correction larger than that raises a
 false alarm. Real re-anchors are a few percent, so the boundary sits in a usable
-place — but it is a boundary, not a proof.
+place, but it is a boundary, not a proof.
 
 **The threat model is load-bearing.** The attacker owns SCADA or the engineering
 workstation. They cannot execute code on the Megapack controllers, alter the
 cells, or reach the CTs. An attacker who *does* own the field devices can make
 all three measurements agree on a lie and B6 fails completely. What the design
 buys is that compromising three independent measurement chains simultaneously is
-a much larger operation than writing a set-point — not that it is impossible.
+a much larger operation than writing a set-point, not that it is impossible.
 
 **B8 trusts its inputs.** See the zones section above.
 
@@ -313,7 +313,7 @@ an in-process virtual segment rather than a NIC, because raw layer-2 needs root.
 
 | Protocol | What is real | What is modelled |
 | --- | --- | --- |
-| Modbus TCP | full framing, real sockets (from the tank version) | — |
+| Modbus TCP | full framing, real sockets (from the tank version) |, |
 | DNP3 | link/transport/application framing, 0x3D65 CRC, CROB and analog output, select-before-operate | no SAv5, no event classes, no file transfer |
 | GOOSE | Ethernet/VLAN header, BER-encoded goosePdu, stNum/sqNum semantics, TTL | transport is an in-process segment |
 | PRP | 6-octet redundancy control trailer, duplicate discard, A/B discrepancy | dual LAN is in-process |
@@ -322,7 +322,7 @@ an in-process virtual segment rather than a NIC, because raw layer-2 needs root.
 Two of these carry security properties worth having independent of the physics:
 
 **DNP3 select-before-operate** is a protocol-level plausibility constraint of the
-same shape as a physics rule — the outstation does not need to know whether
+same shape as a physics rule, the outstation does not need to know whether
 opening a breaker is wise, only that nobody armed it. Comparing the OPERATE's
 payload against the armed SELECT defeats an attacker who watches a legitimate
 SELECT and substitutes their own OPERATE, with no key material involved.

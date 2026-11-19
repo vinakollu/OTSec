@@ -10,7 +10,7 @@ replay one episode deterministically:
   rather than a hand-written sequence that happens to avoid every rule.
 
 Ground truth lives here and nowhere else. The guard never sees the ``malicious``
-flag, the ``attack_window`` or the controller's internals — the harness uses them
+flag, the ``attack_window`` or the controller's internals, the harness uses them
 only to score what the guard decided.
 """
 
@@ -115,7 +115,7 @@ class LevelController:
         self.deadband_pct = deadband_pct
         self.initial_valve_pct = valve_pct
         # Operator-initiated changes: (time, new value). This is how startup and
-        # shutdown are expressed — as an operator moving a target, with the loop
+        # shutdown are expressed, as an operator moving a target, with the loop
         # doing the actual actuation, rather than as a hand-scripted ramp.
         self.setpoint_schedule = sorted(setpoint_schedule or [])
         self.valve_schedule = sorted(valve_schedule or [])

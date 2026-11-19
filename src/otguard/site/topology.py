@@ -1,14 +1,14 @@
 """Site architecture as IEC 62443 zones and conduits.
 
 The equipment on a storage site is not a flat network, and the segmentation is
-not decoration — it is a security control that a command either respects or does
+not decoration, it is a security control that a command either respects or does
 not. This module turns "there is a jump server and a firewall" into something a
 rule can actually adjudicate.
 
 The model is the Purdue reference architecture with 62443 zones layered on top:
 
     Level 4  enterprise      corporate IT, historians, market systems
-    Level 3.5 dmz            jump server, firewall — the only way in
+    Level 3.5 dmz            jump server, firewall, the only way in
     Level 3  supervisory     SCADA front end, engineering workstation, HMI
     Level 2  control         site controller
     Level 1  field           Megapack controllers, protection relays, meter
@@ -17,14 +17,14 @@ The model is the Purdue reference architecture with 62443 zones layered on top:
 A *conduit* is a permitted communication path between two zones, carrying named
 protocols in a named direction. Anything not described by a conduit is not
 supposed to happen, and rule B8 treats a write that arrives outside one as
-implausible regardless of its content — the same move the physics rules make,
+implausible regardless of its content, the same move the physics rules make,
 but with the site's architecture as the invariant instead of its dynamics.
 
 Worth being explicit about what this is *not*: it is a model of the segmentation,
 not an implementation of it. A real deployment gets these properties from the
-firewall's rule set and the jump server's session records; here they are fields
+firewall's rule set and the jump server's session records. Here they are fields
 on a command that the harness populates, and the guard's job is to notice when
-they are wrong. The distinction matters when reading the results — B8's
+they are wrong. The distinction matters when reading the results, B8's
 detections show the rule works given trustworthy provenance metadata, not that
 the metadata is unforgeable.
 """
@@ -102,7 +102,7 @@ class Device:
 class Conduit:
     """A permitted path between two zones.
 
-    ``via`` names a device the traffic must actually traverse — the jump server
+    ``via`` names a device the traffic must actually traverse, the jump server
     on the engineering path. A conduit with a ``via`` that the command did not
     pass through is the modelled equivalent of someone reaching the control zone
     around the bastion rather than through it.
@@ -210,12 +210,12 @@ def default_site_topology(n_packs: int = 16) -> SiteTopology:
     redundant switching, SCADA, a jump server and a firewall, an HMI.
     """
     devices: list[Device] = [
-        # Level 4 — enterprise
+        # Level 4, enterprise
         Device("historian", Role.HISTORIAN, "enterprise", PurdueLevel.ENTERPRISE, ("https",)),
-        # Level 3.5 — DMZ
+        # Level 3.5, DMZ
         Device("firewall", Role.FIREWALL, "dmz", PurdueLevel.DMZ, ("https", "modbus_tcp", "dnp3")),
         Device("jump01", Role.JUMP_SERVER, "dmz", PurdueLevel.DMZ, ("ssh", "https")),
-        # Level 3 — supervisory
+        # Level 3, supervisory
         Device("scada01", Role.SCADA, "supervisory", PurdueLevel.SUPERVISORY, ("dnp3", "rest")),
         Device("hmi01", Role.HMI, "supervisory", PurdueLevel.SUPERVISORY, ("rest", "modbus_tcp")),
         Device(
@@ -225,7 +225,7 @@ def default_site_topology(n_packs: int = 16) -> SiteTopology:
             PurdueLevel.SUPERVISORY,
             ("ssh", "rest", "modbus_tcp"),
         ),
-        # Level 2 — control
+        # Level 2, control
         Device(
             "sitectrl",
             Role.SITE_CONTROLLER,
@@ -234,7 +234,7 @@ def default_site_topology(n_packs: int = 16) -> SiteTopology:
             ("modbus_tcp", "dnp3", "rest", "goose"),
             address="10.10.2.10",
         ),
-        # Level 1 — field
+        # Level 1, field
         Device(
             "relay87",
             Role.RELAY,

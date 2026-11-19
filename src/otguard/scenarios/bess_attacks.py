@@ -3,7 +3,7 @@
 The threat model is the same one the tank version fixed in week two, moved up a
 layer: **the attacker owns the SCADA front end or the engineering workstation.**
 They can send any command the site controller could send, read all telemetry,
-and — where noted — modify what the field devices report on their way back. They
+and, where noted, modify what the field devices report on their way back. They
 do not have code execution on the Megapack controllers themselves, and they
 cannot alter the cells, the transformer or the CTs.
 
@@ -14,7 +14,7 @@ is that compromising three independent measurement chains simultaneously is a
 much larger operation than writing a set-point.
 
 Each scenario is labelled with the rules expected to object. That is
-documentation, not an assertion — the evaluation scores what actually fires, and
+documentation, not an assertion, the evaluation scores what actually fires, and
 one scenario (``stealth_dispatch_creep``) is in the suite specifically because
 it is hard.
 """
@@ -157,7 +157,7 @@ def poi_export_violation() -> SiteScenario:
 
 
 # ----------------------------------------------------------------------
-# 2. The distributed version — individually plausible, collectively not
+# 2. The distributed version, individually plausible, collectively not
 # ----------------------------------------------------------------------
 
 
@@ -165,7 +165,7 @@ def aggregate_stealth() -> SiteScenario:
     """Spread the excess across the fleet so no single set-point looks wrong.
 
     This is the scenario that justifies reasoning at the site level. Each unit is
-    asked for 1.45 MW — comfortably inside its 1.927 MW capability, unremarkable
+    asked for 1.45 MW, comfortably inside its 1.927 MW capability, unremarkable
     on its own, and exactly the kind of value a per-device rule waves through.
     The sum is 23.2 MW against a 20 MW limit and a 25 MVA transformer.
 
@@ -284,7 +284,7 @@ def ramp_slam() -> SiteScenario:
     """Full charge to full discharge with the grid sitting at nominal.
 
     The mirror image of ``frequency_response`` in the benign set. Physically the
-    same command sequence; the difference is entirely in whether the grid asked
+    same command sequence. The difference is entirely in whether the grid asked
     for it. If the guard cannot tell these two apart it has either broken the
     site's revenue service or missed the attack.
     """
@@ -300,7 +300,7 @@ def ramp_slam() -> SiteScenario:
         category="attack",
         description=(
             "Fleet slammed from full charge to full discharge in four seconds with "
-            "grid frequency at nominal — no fast-response event to justify it."
+            "grid frequency at nominal, no fast-response event to justify it."
         ),
         duration_s=300.0,
         commands=commands,
@@ -322,7 +322,7 @@ def cooling_shutdown() -> SiteScenario:
 
     No set-point exceeds any limit. The packs keep reporting legal power and a
     plausible state of charge. What changes is a boolean nobody watches, and the
-    temperature does the rest — full power with cooling off leaves the envelope
+    temperature does the rest, full power with cooling off leaves the envelope
     in about half an hour.
 
     Caught by the lookahead rather than by a threshold: B5 projects the thermal
@@ -386,7 +386,7 @@ def soc_spoof() -> SiteScenario:
 
 
 # ----------------------------------------------------------------------
-# 8. Stealthy meter bias — the tank version's unsolved case
+# 8. Stealthy meter bias, the tank version's unsolved case
 # ----------------------------------------------------------------------
 
 
@@ -427,7 +427,7 @@ def goose_trip_spoof() -> SiteScenario:
 
     Availability attack: the site stops earning and stops supporting the grid.
     The frame is well-formed and correctly addressed. What it cannot fake is the
-    relay's own current measurement, which shows nothing near fault levels — so
+    relay's own current measurement, which shows nothing near fault levels, so
     B7 refuses to act on a protection signal the physics does not corroborate.
     """
     return SiteScenario(
@@ -476,7 +476,7 @@ def breaker_close_out_of_sync() -> SiteScenario:
         name="breaker_close_out_of_sync",
         category="attack",
         description=(
-            "Main breaker closed against a 0.6 Hz slip with the bus live — an "
+            "Main breaker closed against a 0.6 Hz slip with the bus live, an "
             "out-of-synchronism close."
         ),
         duration_s=300.0,
@@ -502,7 +502,7 @@ def breaker_close_out_of_sync() -> SiteScenario:
 def enterprise_origin_write() -> SiteScenario:
     """Dispatch commands arriving straight from the enterprise zone.
 
-    Not a physics failure — the values are all deliverable. It is an
+    Not a physics failure, the values are all deliverable. It is an
     architectural one: nothing in the enterprise zone has any business writing
     set-points into control, and no conduit describes that path.
     """
@@ -544,7 +544,7 @@ def enterprise_origin_write() -> SiteScenario:
 def jump_server_bypass() -> SiteScenario:
     """An engineering change that did not go through the bastion.
 
-    The conduit from engineering to control exists and permits REST — but only
+    The conduit from engineering to control exists and permits REST, but only
     ``via`` the jump server. A change arriving on that path from an unrecorded
     host is the modelled equivalent of someone reaching around the bastion.
     """
@@ -587,8 +587,8 @@ def stealth_dispatch_creep() -> SiteScenario:
     ``stealthy_bias`` was for the tank. The attacker raises every unit by 0.02 MW
     every twenty seconds. No single write is a meaningful change, the ramp rate
     stays far inside the grid-code allowance, and the aggregate crosses the
-    export limit so gradually that B3's incremental test — which fires only when
-    a command makes an existing excursion *worse* — sees each step as marginal.
+    export limit so gradually that B3's incremental test, which fires only when
+    a command makes an existing excursion *worse*, sees each step as marginal.
 
     What eventually catches it is the transformer rating rather than the
     contractual limit: the absolute test has no incremental escape hatch. The

@@ -2,7 +2,7 @@
 
 Companion to the README. This is the "why it is shaped this way" document: the
 threat model it is built against, the assumption it relaxes, and the reasoning
-behind each rule — including the two places where the obvious design is the
+behind each rule, including the two places where the obvious design is the
 dangerous one.
 
 ---
@@ -13,13 +13,13 @@ The course material makes the point that good practicum problems come from
 finding an assumption everyone accepts and relaxing it. The relevant one here:
 
 > **Assumed:** to stop an attack on a control system, you must first identify
-> the attack — the malware, the traffic anomaly, the operator who should not be
+> the attack, the malware, the traffic anomaly, the operator who should not be
 > logged in.
 
 Every process-aware IDS in the CPS literature since roughly 2013 accepts some
 form of this. So do the commercial products (Nozomi, Claroty): they learn a
 baseline of normal traffic or normal process behaviour and alert on deviation.
-The residual risk is the same in all of them — the detector is only as complete
+The residual risk is the same in all of them, the detector is only as complete
 as its model of *badness*, and an attacker who looks normal is invisible.
 
 **Relaxed:** don't identify the attack at all. Enforce the physics of the
@@ -75,7 +75,7 @@ helps, and saying otherwise would overstate the result.
 
 ## 3. The process
 
-A storage site and a treatment works — two processes that have the property the whole
+A storage site and a treatment works, two processes that have the property the whole
 design rests on: **inertia**. The level cannot jump. Whatever an attacker writes,
 the tank still fills and drains at a rate set by geometry and gravity.
 
@@ -141,35 +141,35 @@ nothing. Everything reported holds under that mismatch.
 `PhysicsGuard` is protocol-agnostic on purpose. The same object serves the
 deterministic evaluation harness and the live Modbus proxy; nothing inside it
 knows what a function code is. That split is what lets the evaluation be
-reproducible to the sample — scheduler jitter on a loopback socket would
-otherwise show up in the detection numbers — while the network cost is measured
+reproducible to the sample, scheduler jitter on a loopback socket would
+otherwise show up in the detection numbers, while the network cost is measured
 separately, end to end.
 
 Two entry points:
 
-- `observe(Observation)` — every process read. Advances the filter, runs
+- `observe(Observation)`, every process read. Advances the filter, runs
   supervision. Once per scan.
-- `check(Command) -> Verdict` — every write. Runs the rules. On the real-time
+- `check(Command) -> Verdict`, every write. Runs the rules. On the real-time
   path.
 
 ## 5. The rules, and why they are shaped that way
 
-### R1 — range
+### R1, range
 
 Static equipment envelope. The cheapest rule and the one easiest to dismiss as
 trivial, but it is the only thing between an attacker and `valve = 250%` on a
 controller that accepts it because nobody ever told it not to.
 
 One subtlety: the wire carries unsigned 16-bit words. `pump = −20%` arrives as
-`0xFF38`. Read unsigned that is 65336 — rejected, but for the wrong reason, and
+`0xFF38`. Read unsigned that is 65336, rejected, but for the wrong reason, and
 on a controller that interprets the word as signed it would be *obeyed*. The
 register layer sign-extends before the rule sees it.
 
 The legal setpoint ceiling (1.60 m) sits well below the overflow limit
-(1.80 m) — by more than one reaction horizon of fill. Otherwise a perfectly
+(1.80 m), by more than one reaction horizon of fill. Otherwise a perfectly
 legitimate setpoint could itself provoke a supervision trip.
 
-### R2 — actuation dynamics
+### R2, actuation dynamics
 
 Catches sequences that are individually legal and collectively impossible.
 Cycling a valve open/closed at 5 Hz is a textbook water-hammer attack: every
@@ -179,16 +179,16 @@ sliding window, plus a write-rate check (a human clicks; a script hammers).
 
 Deliberately **not** a simple rate-of-change limit on the command. An operator
 slamming a valve from 25% to 100% in one write during an emergency drain is
-legitimate and must not be blocked — see `emergency_drain` in the benign suite.
+legitimate and must not be blocked, see `emergency_drain` in the benign suite.
 Only *repeated reversals* are implausible.
 
-### R3 — inertia lookahead
+### R3, inertia lookahead
 
 The intellectual core. Integrates the model forward over the reaction horizon
 under the candidate command and checks the safety envelope.
 
-**The design trap.** The obvious formulation — "does the predicted trajectory
-violate the envelope?" — is dangerous. When a tank is already heading for an
+**The design trap.** The obvious formulation, "does the predicted trajectory
+violate the envelope?", is dangerous. When a tank is already heading for an
 overflow, *every* trajectory violates the envelope, including the one where the
 operator opens the outlet. That guard blocks the corrective action in precisely
 the moment it matters most, and is worse than having no guard at all.
@@ -199,23 +199,23 @@ the direction of the violation. A command that improves the trajectory is always
 allowed, however dire the situation.
 (`test_r3_never_blocks_a_corrective_command` pins this.)
 
-### R4 — sensor/model consistency
+### R4, sensor/model consistency
 
 A Kalman residual with a two-sided CUSUM. Catches false data injection and
-replay: the reported level has stopped obeying physics, so the *sensor* — not
-the command — is what can no longer be trusted.
+replay: the reported level has stopped obeying physics, so the *sensor*, not
+the command, is what can no longer be trusted.
 
 Three decisions that took measurement to get right:
 
 **Low gain.** The filter is tuned as a *detector*, not a tracker
 (`process_noise_std` 0.001 against `sensor_noise_std` 0.005, giving a steady-state
-gain of ~0.18). Tuned the other way — the natural instinct — it absorbs an
+gain of ~0.18). Tuned the other way, the natural instinct, it absorbs an
 injected bias within two samples and the residual vanishes before the CUSUM can
 accumulate. The first version of this rule was silent against a 0.30 m offset for
 exactly that reason.
 
 **Latching.** The alarm stays up until acknowledged. Without the latch it clears
-itself the moment the filter finishes absorbing the offset — which is precisely
+itself the moment the filter finishes absorbing the offset, which is precisely
 when the operator is most thoroughly deceived.
 
 **Open-loop on alarm.** Once the transmitter is caught lying, the estimator
@@ -224,17 +224,17 @@ keeps R3 and supervision usable *during* a spoofing attack instead of blinding
 them. In `replay_overflow` the screen is frozen at 0.95 m while the tank is at
 1.13 m; the guard's estimate tracks the truth and trips.
 
-### R5 — post-trip lockout
+### R5, post-trip lockout
 
 Closes the gap that makes a trip worthless. When the guard shuts the pump to stop
-an overflow, the compromised HMI is still there and still writing — one second
+an overflow, the compromised HMI is still there and still writing, one second
 later it re-sends `pump = 100` and the trip is undone. Cycling that way, the
 guard alarms forever while the tank fills anyway. This was observed, not
 predicted: the stealthy-bias runs kept overflowing despite the guard tripping.
 
 So while a trip is latched, a pump or valve command is refused if the resulting
 pair would come to rest **past the limit that tripped**. The test uses only the
-commands — never the level reading — via the closed-form equilibrium, which is
+commands, never the level reading, via the closed-form equilibrium, which is
 what lets it hold up when the transmitter is the thing under attack.
 
 **The second design trap.** The tidier-looking rule is "equilibrium must be
@@ -258,7 +258,7 @@ saved. This was a real bug, caught by the sweep.
 
 ## 6. Evaluation design
 
-Every scenario runs twice — enforcing, and watching but powerless. Without that
+Every scenario runs twice, enforcing, and watching but powerless. Without that
 counterfactual, "no overflow occurred" is unfalsifiable.
 
 Detection is scored at two levels because either alone misleads:
@@ -270,7 +270,7 @@ Detection is scored at two levels because either alone misleads:
 - **Scenario level** asks what an asset owner cares about: was it caught, and
   was it caught early enough to prevent damage.
 
-The headline number is **damage avoidance** — of the attacks that actually broke
+The headline number is **damage avoidance**, of the attacks that actually broke
 something with the guard removed, how many did the guard stop. Plain
 "prevention rate" gives free credit for stopping attacks that were never going
 to do harm.
@@ -282,7 +282,7 @@ refused by the lockout, which is the guard working. Both numbers are reported.
 Two guardrails on the suite itself, as tests:
 
 - benign scenarios must stay inside the safety envelope *with the guard
-  disabled* — otherwise a badly parameterised "normal" case genuinely overflows,
+  disabled*, otherwise a badly parameterised "normal" case genuinely overflows,
   the guard correctly trips, and the correct trip is scored as a false alarm
   (this happened, with `pump_trip_restart`);
 - enough attacks must still cause damage unguarded, so "prevented" keeps meaning
@@ -319,7 +319,7 @@ Beyond the stealthy-bias band documented in the README:
    for a new process is engineering work.
 3. **Bounded model mismatch.** 4% is tolerated; a grossly wrong model would
    produce both false alarms and misses. How much mismatch is tolerable is not
-   yet characterised — a sweep over model error would be a natural next result.
+   yet characterised, a sweep over model error would be a natural next result.
 4. **Single sensor.** R4's detection floor is set by the noise on one
    transmitter. Redundant or physically independent measurement is the principled
    fix and the clearest direction for future work.
@@ -342,5 +342,5 @@ The distinction this project draws is between *detecting anomalies in the
 process* and *enforcing physics as an admission policy on commands*. The first
 observes and alerts; the second sits inline and refuses. R3's counterfactual
 comparison and R5's sensor-free equilibrium test are both artefacts of being
-inline — they exist because the guard has to decide whether to *pass* a command,
+inline, they exist because the guard has to decide whether to *pass* a command,
 not merely whether to flag it after the fact.
