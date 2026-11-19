@@ -36,3 +36,75 @@ class SimClock:
 
     def reset(self) -> None:
         self._t0 = time.perf_counter()
+
+
+class SteppedClock:
+    """Simulated time that moves only when it is told to.
+
+    :class:`SimClock` is driven by the wall, which is right for a
+    demonstration and wrong for a test. A loaded machine changes how a
+    process loop, a control loop and an attack script interleave, so a suite
+    built on it fails every so often for reasons that have nothing to do with
+    the code. For a project whose subject is control timing, a harness whose
+    own timing wanders is weak evidence.
+
+    This one exposes the same two methods every party already uses, so the
+    plants, the guards and the attack scripts need no special case. The
+    difference is that nothing happens until :meth:`advance` is called, and
+    when it is, every sleeper due in that interval wakes in time order. The
+    same run therefore produces the same interleaving on a quiet laptop and
+    on a busy build machine.
+    """
+
+    def __init__(self, start: float = 0.0) -> None:
+        #: Reported for the benefit of anything that displays a speed. A
+        #: stepped clock has no relationship to the wall at all.
+        self.speed = 0.0
+        self._t = start
+        self._waiters: list[tuple[float, asyncio.Future]] = []
+
+    def now(self) -> float:
+        return self._t
+
+    async def sleep(self, seconds: float) -> None:
+        if seconds <= 0:
+            await asyncio.sleep(0)
+            return
+        future = asyncio.get_running_loop().create_future()
+        self._waiters.append((self._t + seconds, future))
+        await future
+
+    async def advance(self, seconds: float) -> None:
+        """Move time forward, waking everything due along the way.
+
+        Time jumps to each waiter's deadline in turn rather than in fixed
+        increments, so a loop sleeping a tenth of a second and one sleeping a
+        minute both wake exactly when they asked to, and neither is skipped.
+        """
+        # Let anything just created reach its first sleep. A task made with
+        # ``create_task`` has not run a line of its body until the loop
+        # yields, so without this the first advance of a run sees no sleepers
+        # at all, jumps straight to the target, and the plant never steps.
+        for _ in range(12):
+            await asyncio.sleep(0)
+        target = self._t + max(seconds, 0.0)
+        while True:
+            pending = [(t, f) for t, f in self._waiters if not f.done()]
+            self._waiters = pending
+            upcoming = [t for t, _ in pending if t <= target]
+            self._t = min(upcoming) if upcoming else target
+            due = [f for t, f in pending if t <= self._t]
+            self._waiters = [(t, f) for t, f in pending if t > self._t]
+            for future in due:
+                if not future.done():
+                    future.set_result(None)
+            # Let everything woken run until it sleeps again, including
+            # anything it starts. Without this the next deadline is computed
+            # from a half-finished scan.
+            for _ in range(12):
+                await asyncio.sleep(0)
+            if not due and self._t >= target:
+                return
+
+    def reset(self) -> None:
+        self._t = 0.0

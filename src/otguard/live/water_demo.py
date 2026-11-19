@@ -21,10 +21,11 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import random
 import time
 from dataclasses import dataclass, field
 
-from ..clock import SimClock
+from ..clock import SimClock, SteppedClock
 from ..guard.water_guard import Decision, WaterGuard
 from ..water.metrics import HEADLINE, assess, catalogue
 from ..water.plant import WaterSafety, WaterWorks, WorksConfig
@@ -152,7 +153,7 @@ ATTACKS: tuple[Attack, ...] = (
         "the enterprise network. No part of that network has any business "
         "writing to the plant.",
         "vendor", "enterprise", "JUMP-01",
-        ((0.0, K.MAX_CHLORINE_DOSE, 10.0), (5.0, K.CHLORINE_DOSE, 8.0)), 600.0,
+        ((0.0, K.MAX_CHLORINE_DOSE, 11.0), (5.0, K.CHLORINE_DOSE, 9.5)), 600.0,
     ),
 )
 
@@ -187,14 +188,24 @@ class WaterDemo:
         bus: EventBus,
         speed: float = 30.0,
         enforce: bool = True,
-        seed: int = 3,
+        seed: int | None = None,
+        clock: SimClock | SteppedClock | None = None,
     ) -> None:
         self.bus = bus
-        self.clock = SimClock(speed=speed)
+        #: A test passes a SteppedClock so the run is the same on any
+        #: machine; a demonstration gets the wall-driven one.
+        self.clock = clock if clock is not None else SimClock(speed=speed)
+        # A run with no seed picks one and says which. The river the works
+        # meets decides its flow, its dosing and how hard its filters are
+        # working, and a demonstration that meets the same river every time
+        # looks like a recording rather than a plant. Resolving this before
+        # the plant is built matters: a reset has to rebuild the same works,
+        # not a different one.
+        self._seed = random.randrange(1, 1_000_000) if seed is None else seed
         self.works_cfg = WorksConfig()
         self.safety = WaterSafety()
         self.topology = Topology()
-        self.plant = WaterWorks(self.works_cfg, self.safety, seed=seed)
+        self.plant = WaterWorks(self.works_cfg, self.safety, seed=self._seed)
         self.guard = WaterGuard(self.works_cfg, self.safety, self.topology,
                                 enforce=enforce)
         self.stats = _Stats()
@@ -207,12 +218,34 @@ class WaterDemo:
         self._control_enabled = True
         self._turn = 0
         self._last_publish = 0.0
-        self._seed = seed
+        #: Simulated seconds the plant has actually integrated. On a
+        #: loaded machine this falls behind the clock, so anything
+        #: waiting for the plant to get somewhere waits on this.
+        self._sim_t = 0.0
         self._prime_guard()
 
     # ------------------------------------------------------------------
     def _now(self) -> float:
         return self.clock.now()
+
+    @property
+    def sim_t(self) -> float:
+        """Simulated seconds the plant has integrated since the run began."""
+        return self._sim_t
+
+    async def advance(self, seconds: float) -> None:
+        """Wait until the plant has actually advanced this far.
+
+        Not the same as sleeping on the clock. Under load the loop falls
+        behind, and a test that waited on the clock would cut an attack short
+        and call the result a pass.
+        """
+        if isinstance(self.clock, SteppedClock):
+            await self.clock.advance(seconds)
+            return
+        target = self._sim_t + seconds
+        while self._sim_t < target:
+            await self.clock.sleep(1.0)
 
     def _prime_guard(self) -> None:
         """Tell the guard what the plant is already being held at.
@@ -242,8 +275,10 @@ class WaterDemo:
         self.guard.observe(self._observe())
         self.bus.publish(self.describe())
         self._say(plain.guard_mode_line(self.guard.enforce))
+        s = self.plant.state
         self._say(plain.Line(
-            "The works is running normally.",
+            f"The works is treating {s.raw_flow_m3h:.0f} m\u00b3 of river water "
+            f"an hour, at {s.raw_turbidity_ntu:.1f} NTU.",
             "Five controllers are running the process and the plant's automatic "
             "control is holding it on target. Every command it sends crosses "
             "OTGuard on the way.", "good", "start"))
@@ -281,12 +316,17 @@ class WaterDemo:
                 await self.clock.sleep(tick)
                 now = self._now()
                 # Cap a long gap (a suspended laptop, a reset) rather than
-                # integrating hours in one step.
+                # integrating hours in one step. A loaded machine
+                # leaves this loop behind and the catch-up is what keeps
+                # the plant honest, but it has to stay small enough that
+                # the control loop, which sleeps on the same clock, is not
+                # starved while the plant runs on without it.
                 elapsed = min(max(now - last, 0.0), 120.0)
                 last = now
                 while elapsed > 0.0:
                     slice_s = min(elapsed, 2.0)
                     self.plant.step(slice_s)
+                    self._sim_t += slice_s
                     elapsed -= slice_s
                 observation = self._observe()
                 event = self.guard.observe(observation)
@@ -511,6 +551,7 @@ class WaterDemo:
                        "intake to the mains.",
             "guarded": self.guard.enforce,
             "speed": self.clock.speed,
+            "seed": self._seed,
             "topology": self.topology.summary(),
             "metrics": [
                 {"key": m.key, "label": m.label, "unit": m.unit, "stage": m.stage.value,
@@ -612,7 +653,8 @@ class WaterDemo:
         self.stats = _Stats()
         self._say(plain.Line(
             "The works has been put back to where it started.",
-            "Clean water, normal doses, tank half full.", "good", "reset"))
+            "The same river it started with, the same doses, and the tank back "
+            "where it was.", "good", "reset"))
         return {"ok": True}
 
     async def command(self, action: str, params: dict[str, str]) -> dict:

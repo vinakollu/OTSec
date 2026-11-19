@@ -63,8 +63,7 @@ from ..config import Config
 from ..guard import Command, Observation, PhysicsGuard, Verdict
 from ..guard.types import RuleFinding
 from ..guard.guard import ProtectiveAction, SupervisionEvent
-from ..modbus.devicemap import PointRole
-from ..modbus.inventory import WireDecision, WirePolicy
+from ..guard.wire import PointRole, WireDecision, WirePolicy
 from .certs import CertSet
 from .framing import BODY_OFFSET, Message, SecurityMode, Visibility, frame
 from .nodes import LEVEL_POINT, NodeMap

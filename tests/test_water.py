@@ -27,6 +27,7 @@ import pytest
 from otguard.guard.water_estimator import WaterEstimator
 from otguard.guard.water_guard import Decision, WaterGuard
 from otguard.guard.water_rules import ConsequenceRule, CrossInstrumentRule, WaterContext
+from otguard.clock import SteppedClock
 from otguard.live import EventBus
 from otguard.live.bus import EventBus as Bus
 from otguard.live.plain import Line, metric_line, verdict_line
@@ -39,8 +40,14 @@ from otguard.water.types import Stage, WaterCommand
 from otguard.water.types import WaterCommandKind as K
 
 
+#: Tests pin the river. The live demonstration picks one at random so no
+#: two runs are alike; a test suite that did the same could not tell a
+#: regression from a wet week upstream.
+SEED = 3
+
+
 def works() -> WaterWorks:
-    return WaterWorks(WorksConfig(), WaterSafety(), seed=3)
+    return WaterWorks(WorksConfig(), WaterSafety(), seed=SEED)
 
 
 def settled_guard(w: WaterWorks, enforce: bool = True) -> WaterGuard:
@@ -255,9 +262,9 @@ class TestRules:
         commands may be refused.
         """
         async def run():
-            demo = WaterDemo(Bus(), speed=900.0, enforce=True)
+            demo = WaterDemo(Bus(), enforce=True, seed=SEED, clock=SteppedClock())
             await demo.start()
-            await demo.clock.sleep(900.0)
+            await demo.advance(900.0)
             await demo.stop()
             return demo
         demo = asyncio.run(run())
@@ -348,14 +355,14 @@ class TestLiveView:
     @pytest.mark.parametrize("attack", [a.name for a in ATTACKS])
     def test_every_attack_needs_the_guard(self, attack):
         async def run(enforce: bool):
-            demo = WaterDemo(Bus(), speed=3000.0, enforce=enforce)
+            demo = WaterDemo(Bus(), enforce=enforce, seed=SEED, clock=SteppedClock())
             spec = next(a for a in ATTACKS if a.name == attack)
             await demo.start()
             await demo.launch_attack(attack)
             seen: set[str] = set()
-            end = demo.clock.now() + spec.span_s + 200.0
-            while demo.clock.now() < end:
-                await demo.clock.sleep(10.0)
+            end = demo.sim_t + spec.span_s + 200.0
+            while demo.sim_t < end:
+                await demo.advance(10.0)
                 seen |= demo.plant.state.harms
             blocked = demo.stats.blocked
             await demo.stop()
@@ -373,10 +380,10 @@ class TestLiveView:
         the screen, so every rate shown beside it was understated.
         """
         async def run():
-            demo = WaterDemo(Bus(), speed=2000.0, enforce=False)
+            demo = WaterDemo(Bus(), enforce=False, seed=SEED, clock=SteppedClock())
             await demo.start()
             await demo.launch_attack("drain_the_clearwell")
-            await demo.clock.sleep(3000.0)
+            await demo.advance(3000.0)
             level = demo.plant.state.clearwell_level_m
             await demo.stop()
             return level
@@ -386,7 +393,7 @@ class TestLiveView:
         assert asyncio.run(run()) < 0.6
 
     def test_the_scenario_describes_everything_the_page_draws(self):
-        demo = WaterDemo(Bus(), speed=1.0)
+        demo = WaterDemo(Bus(), seed=SEED, clock=SteppedClock())
         p = demo.describe().payload
         assert len(p["attacks"]) == len(ATTACKS)
         assert len(p["metrics"]) == 14
@@ -430,7 +437,7 @@ class TestLiveView:
 
     def test_the_guard_can_be_switched_off_and_back_on(self):
         async def run():
-            demo = WaterDemo(Bus(), speed=1000.0, enforce=True)
+            demo = WaterDemo(Bus(), enforce=True, seed=SEED, clock=SteppedClock())
             await demo.start()
             assert (await demo.command("enforce", {"value": "false"}))["ok"]
             assert demo.guard.enforce is False
@@ -442,13 +449,13 @@ class TestLiveView:
 
     def test_reset_puts_the_works_back(self):
         async def run():
-            demo = WaterDemo(Bus(), speed=3000.0, enforce=False)
+            demo = WaterDemo(Bus(), enforce=False, seed=SEED, clock=SteppedClock())
             await demo.start()
             await demo.launch_attack("silent_underdose")
-            await demo.clock.sleep(1400.0)
+            await demo.advance(1400.0)
             assert demo.plant.state.harms
             await demo.command("reset", {})
-            await demo.clock.sleep(30.0)
+            await demo.advance(30.0)
             harms = demo.plant.state.harms
             blocked = demo.stats.blocked
             await demo.stop()
@@ -472,3 +479,36 @@ def test_no_nan_anywhere_in_a_long_run():
     for name, value in vars(w.state).items():
         if isinstance(value, float):
             assert math.isfinite(value), f"{name} is {value}"
+
+
+def test_a_running_works_is_compliant_whatever_river_it_got():
+    """Across seeds, because the live run picks its river at random.
+
+    A guard tuned to one set of opening numbers is a guard that works on the
+    day it was written. The works meets a different river every run now, and
+    none of them may produce a refusal.
+    """
+    async def once(seed: int):
+        demo = WaterDemo(Bus(), seed=seed, clock=SteppedClock())
+        await demo.start()
+        await demo.advance(900.0)
+        out = (demo.stats.blocked, demo.stats.inspected,
+               sorted(demo.plant.state.harms))
+        await demo.stop()
+        return out
+    for seed in (3, 11, 29, 47, 101):
+        blocked, inspected, harms = asyncio.run(once(seed))
+        assert inspected > 5, f"seed {seed} issued almost nothing"
+        assert blocked == 0, (
+            f"seed {seed}: {blocked} of {inspected} ordinary commands refused")
+        assert harms == [], f"seed {seed} harmed the water with nobody attacking"
+
+
+def test_no_two_unseeded_runs_meet_the_same_river():
+    rivers = set()
+    for _ in range(6):
+        demo = WaterDemo(Bus(), clock=SteppedClock())
+        s = demo.plant.state
+        rivers.add((round(s.raw_turbidity_ntu, 4), round(s.raw_flow_m3h, 2),
+                    round(s.clearwell_level_m, 4)))
+    assert len(rivers) > 1, "every unseeded run started from the same river"

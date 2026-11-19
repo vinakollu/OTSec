@@ -26,6 +26,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
+from ..guard.wire import (  # noqa: F401
+    PERMISSIVE_POLICY, WireDecision, WirePolicy,
+)
+
 
 class SourceClass(str, Enum):
     """What kind of device is sending, which sets its expected traffic shape."""
@@ -96,60 +100,4 @@ UNKNOWN_SOURCE = SourceDevice(
     name="unknown",
     source_class=SourceClass.UNKNOWN,
     description="a connection from an address not in the inventory",
-)
-
-
-class WireDecision(str, Enum):
-    """Why a frame was stopped before the physics rules ever ran."""
-
-    UNKNOWN_FUNCTION = "unknown_function"
-    UNPARSEABLE = "unparseable"
-    UNJUDGEABLE_WRITE = "unjudgeable_write"
-    UNMAPPED_POINT = "unmapped_point"
-    PARAMETER_WRITE = "parameter_write"
-    UNAUTHORISED_SOURCE = "unauthorised_source"
-    UNAUTHORISED_POINT = "unauthorised_point"
-
-
-@dataclass(frozen=True)
-class WirePolicy:
-    """What to do with writes the physics rules cannot evaluate.
-
-    Every flag defaults to refusing. ``allow_unknown_sources`` is the one worth
-    arguing about: refusing it turns the guard into an access-control device as
-    well as a physics one, which is a different claim than the project makes
-    elsewhere. It is reported as its own column in the results so its
-    contribution can be told apart from the rules'.
-    """
-
-    refuse_unknown_functions: bool = True
-    refuse_unmapped_points: bool = True
-    refuse_parameter_writes: bool = True
-    enforce_source_scope: bool = True
-    allow_unknown_sources: bool = False
-
-    def permits(self, decision: WireDecision) -> bool:
-        """True when the policy lets a frame with this defect through anyway."""
-        return {
-            WireDecision.UNKNOWN_FUNCTION: not self.refuse_unknown_functions,
-            WireDecision.UNPARSEABLE: False,
-            # A frame whose effect cannot be determined from the frame is never
-            # forwarded, whatever the policy says. Permitting it would mean
-            # vouching for a value the guard has not seen.
-            WireDecision.UNJUDGEABLE_WRITE: False,
-            WireDecision.UNMAPPED_POINT: not self.refuse_unmapped_points,
-            WireDecision.PARAMETER_WRITE: not self.refuse_parameter_writes,
-            WireDecision.UNAUTHORISED_SOURCE: self.allow_unknown_sources,
-            WireDecision.UNAUTHORISED_POINT: not self.enforce_source_scope,
-        }[decision]
-
-
-#: Everything forwarded that the rules cannot judge. The ablation baseline:
-#: it isolates what the physics rules catch on their own.
-PERMISSIVE_POLICY = WirePolicy(
-    refuse_unknown_functions=False,
-    refuse_unmapped_points=False,
-    refuse_parameter_writes=False,
-    enforce_source_scope=False,
-    allow_unknown_sources=True,
 )
