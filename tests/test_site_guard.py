@@ -264,7 +264,7 @@ def test_vote_catches_a_biased_meter_and_names_it(cfg, guard):
 
 
 def test_vote_names_the_relay_when_the_relay_is_the_liar(cfg, guard):
-    """Attribution, not just detection — the vote identifies which source."""
+    """Attribution, not just detection, the vote identifies which source."""
     site = _loaded(cfg, guard)
     _observe_with_bias(guard, site, "relay", 0.002)
     assert guard.voter.alarm is MeasurementSource.RELAY

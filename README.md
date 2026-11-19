@@ -25,8 +25,8 @@ A few minutes later the water is on the floor.
 That's the problem in one picture. The dangerous thing wasn't a strange command.
 It was an ordinary command sent at the wrong moment.
 
-Swap the bathtub for a water treatment plant or a grid battery site — the two
-plants this project guards — and the floor is a town.
+Swap the bathtub for a water treatment plant or a grid battery site, the two
+plants this project guards, and the floor is a town.
 
 ## Why you can't just fix the controller
 
@@ -130,7 +130,7 @@ the caveats left in their own sections:
 | Storage site, scripted | 13 of 13 | 5 of 5 | 0 of 3783 |
 | Storage site, live | 8 of 10 | 8 of 8 | 0 of 150 |
 | Treatment works | 9 of 9 | 9 of 9 | 0 of 57 |
-| Incident-derived | 7 of 7 | 7 of 7 | — |
+| Incident-derived | 7 of 7 | 7 of 7 |, |
 
 The storage site's live row is the honest one: two of its ten attacks defeat
 the guard and are on the page saying so, and two more harm what the guard
@@ -625,7 +625,7 @@ written, or to what.
 Two things about this vantage point are worth stating before the numbers. A
 bump-in-the-wire on one OPC UA session reads what that server publishes and
 nothing else, so the site's three independent measurements are not three
-nodes on this endpoint — they are three instruments on three conduits, and
+nodes on this endpoint, they are three instruments on three conduits, and
 this device sees one figure. The guard is told it has one source rather than
 being handed the same number three times, because three copies of one reading
 would look like three instruments agreeing and would be a lie about what the
@@ -648,7 +648,7 @@ there.
 That is a design fault rather than a tuning problem, so the guard carries a
 second supervisor that runs only when it knows it is command-blind. It reads
 the export and the export's slope, predicts forward with no model at all, and
-trips against the transformer rather than against the export limit — the
+trips against the transformer rather than against the export limit, the
 limit is a number on the wire an attacker may already have moved, and the
 transformer rating is iron. It is the weakest protection in the project and
 the only one that survives an encrypted channel.
@@ -705,8 +705,8 @@ python -m pytest
 ```
 
 Each plant has its own command and none of them runs two. They keep different
-time — a battery warms up over tens of minutes and a contact tank fills over
-forty — and one invocation that played them in sequence left nobody able to
+time, a battery warms up over tens of minutes and a contact tank fills over
+forty, and one invocation that played them in sequence left nobody able to
 say afterwards which numbers belonged to which plant.
 
 Neither live page starts from the same numbers twice. The works meets a

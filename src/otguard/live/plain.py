@@ -12,7 +12,7 @@ rule's meaning next to them, no units left unexplained, and no sentence that
 needs a water engineer to parse.
 
 The hard part is the second one. "A chlorine dose of 9.5 mg/L" means nothing
-to a reader; "more than ten times what this water needs, enough to leave the
+to a reader. "more than ten times what this water needs, enough to leave the
 mains carrying twice the safe limit" means something to anybody. The numbers
 come from the guard's own finding, so nothing here invents a consequence the
 rules did not actually compute.
@@ -95,7 +95,11 @@ def asked_for(command: WaterCommand) -> str:
         return ("hand the plant back to automatic control" if command.value >= 0.5
                 else "take the plant off automatic control")
     if kind.role is PointRole.LIMIT:
-        return f"raise the {kind.label} to {value}"
+        # "set", not "raise". A limit write that re-asserts the value already
+        # configured is the commonest honest traffic on this point, and it is
+        # also the exact shape an attack on it takes, so the narration has to
+        # describe both without calling either one of them the other.
+        return f"set the {kind.label} to {value}"
     return f"set the {kind.label} to {value}"
 
 

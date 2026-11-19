@@ -5,7 +5,7 @@ nowhere else, and the guard never sees the ``malicious`` flag, the attack window
 or the controller's internals.
 
 The dispatch controller matters more here than the tank's PI loop did. A storage
-site's benign traffic is not one operator nudging a set-point — it is a site
+site's benign traffic is not one operator nudging a set-point, it is a site
 controller allocating a site-level target across sixteen units every few seconds,
 all day. If that allocation is written naively the false-alarm rate measures the
 controller's clumsiness rather than the guard's discrimination. So
@@ -83,7 +83,7 @@ class SiteScenario:
     # When the attacker has taken over dispatch, the legitimate site
     # controller stops writing. Without this the scripted attack and the
     # honest controller overwrite each other every two seconds and the
-    # attack is neutered by its victim rather than by the guard — which
+    # attack is neutered by its victim rather than by the guard, which
     # silently flatters the results.
     controller_stops_at: float | None = None
     # Protocol-level events, replayed by the harness against the protocol
@@ -118,7 +118,7 @@ class SiteDispatchController:
         Units do not get an equal share. A unit near empty, or derated by heat,
         gets less, because that is what it can deliver. Allocating equally would
         produce set-points that exceed individual capability and the guard would
-        be right to object — a false alarm caused by a bad controller, not a bad
+        be right to object, a false alarm caused by a bad controller, not a bad
         rule.
 
     ``deadband_mw``
@@ -186,11 +186,11 @@ class SiteDispatchController:
         #
         # This is what makes a biased meter consequential rather than cosmetic.
         # A controller running open-loop on its schedule would ignore a spoofed
-        # meter entirely and the attack would do nothing — which is precisely
+        # meter entirely and the attack would do nothing, which is precisely
         # what the first version of this did, and why the meter-bias scenario
         # initially registered no damage at all.
         # The clamp is the anti-windup. The trim exists only to cover house
-        # load and transformer losses — about a megawatt — so bounding it
+        # load and transformer losses, about a megawatt, so bounding it
         # near that magnitude stops the integrator from winding the fleet up
         # past the transformer rating during a start-up transient. An
         # earlier bound of 8 MW did exactly that, and the guard was right to

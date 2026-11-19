@@ -132,7 +132,7 @@ class TestPlant:
 
         The model used to let filter removal stay near its design figure
         however dirty the water arriving was, so cutting the coagulant produced
-        0.26 NTU — untidy, legal, and survivable. A filter fed several times
+        0.26 NTU, untidy, legal, and survivable. A filter fed several times
         what it is sized for passes particles instead of catching them.
         """
         w = works()

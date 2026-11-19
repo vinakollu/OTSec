@@ -1,7 +1,7 @@
 """A clock that can run faster than the wall.
 
-Everything that runs over real sockets — the simulated field devices, the
-guard's proxy, the masters sending commands — reads time from one of these
+Everything that runs over real sockets, the simulated field devices, the
+guard's proxy, the masters sending commands, reads time from one of these
 instead of ``time.perf_counter``. At ``speed=1`` it is the wall clock. At
 ``speed=20`` a two-minute scenario plays out in six seconds, and because every
 party reads the same clock, a peer controller writing "every 100 ms" is still

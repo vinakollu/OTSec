@@ -98,4 +98,4 @@ class Verdict:
         head = f"{self.decision.value.upper():5s} {self.command}"
         if not self.findings:
             return head
-        return head + "  <- " + "; ".join(str(f) for f in self.findings)
+        return head + "  <- " + ". ".join(str(f) for f in self.findings)

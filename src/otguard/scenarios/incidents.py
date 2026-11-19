@@ -14,14 +14,14 @@ do.
 
 **Where the commands came from.** A bump-in-the-wire sees one conduit. An
 attacker who executes code on the controller is downstream of it and issues no
-command the guard can read; an attacker stealing documents from an engineering
+command the guard can read. An attacker stealing documents from an engineering
 file share is off to one side of it entirely. Neither is a failure of the
 rules. Both are a statement about where the device is installed, and a guard
 evaluated only against attacks that happen to cross it will look far better
 than it is.
 
 **Whether there was a command at all.** Two of the campaigns most often cited
-in OT security courses — Night Dragon and Havex — did not manipulate a process.
+in OT security courses, Night Dragon and Havex, did not manipulate a process.
 They inventoried and exfiltrated. A plausibility guard has nothing to
 contribute, and the honest result is a row that says so rather than a scenario
 bent until it scores.
@@ -32,7 +32,7 @@ shutdown. It does not say what was written, to what, or by whom. A scenario
 built on that would be this project's invention wearing an incident's name.
 
 Every account below is from public reporting as the author understood it, and
-none of it has been checked against primary sources; the dates and mechanisms
+none of it has been checked against primary sources. The dates and mechanisms
 are the parts to trust least. Every number in every scenario is this project's
 own and is not an incident's measured parameter. Where reporting is disputed,
 the row says so.
@@ -94,7 +94,7 @@ def stuxnet_overspeed_replay(
             # Played newest first and then ping-ponged. Starting at the oldest
             # sample would put a thirty-second step in the trace at the moment
             # the attack begins, which the consistency rule catches on the very
-            # first sample — and then the scenario is measuring a discontinuity
+            # first sample, and then the scenario is measuring a discontinuity
             # rather than a replay. The seam has to be continuous for the
             # attack to be the attack.
             playback.append(recorded[::-1] + recorded)
@@ -140,8 +140,8 @@ def setpoint_overdose() -> Scenario:
 
     The Oldsmar shape. In February 2021 a remote-access session on a Florida
     water treatment plant's operator workstation raised a sodium hydroxide
-    set-point by about a hundredfold — reported as roughly 100 ppm to roughly
-    11,100 ppm — and an operator watching the screen put it back. Later
+    set-point by about a hundredfold, reported as roughly 100 ppm to roughly
+    11,100 ppm, and an operator watching the screen put it back. Later
     reporting raised the possibility that the change was a plant employee's own
     action rather than an intrusion, so this is a scenario about a *shape* of
     command and not a reconstruction of an established attack.
@@ -161,7 +161,7 @@ def setpoint_overdose() -> Scenario:
         category="attack",
         description=(
             "Level set-point raised to 1.95 m, above the tank, from an authenticated "
-            "session; the control loop then fills to it."
+            "session. The control loop then fills to it."
         ),
         duration_s=200.0,
         initial_level_m=0.95,
@@ -325,7 +325,7 @@ INCIDENTS: tuple[Incident, ...] = (
             "station and a controller would have been on the path of. A guard that reported "
             "coverage here would be reporting a coincidence."
         ),
-        evidence=(Evidence("none", "", "espionage; the wrong control entirely"),),
+        evidence=(Evidence("none", "", "espionage. The wrong control entirely"),),
     ),
     Incident(
         key="havex",
@@ -409,8 +409,8 @@ INCIDENTS: tuple[Incident, ...] = (
         mechanism=Mechanism.COMMAND,
         vantage=Vantage.CROSSES,
         account=(
-            "Malware that spoke substation protocols natively — IEC 60870-5-101 and -104, "
-            "IEC 61850 and OPC — and issued breaker commands directly, with no operator "
+            "Malware that spoke substation protocols natively, IEC 60870-5-101 and -104, "
+            "IEC 61850 and OPC, and issued breaker commands directly, with no operator "
             "console involved and at machine rate."
         ),
         modelled=(
@@ -446,7 +446,7 @@ INCIDENTS: tuple[Incident, ...] = (
         unmodelled=(
             "Everything after the implant lands. Once resident on the safety controller the "
             "attacker is below the guard and nothing crosses the conduit. The modelled part "
-            "is the delivery, which does cross it — and no physics rule can judge it, because "
+            "is the delivery, which does cross it, and no physics rule can judge it, because "
             "'turn off the interlock' has no physical consequence to predict. It is refused "
             "by the wire policy, which is this project's one case of stopping an attack "
             "without understanding it."
@@ -476,7 +476,7 @@ INCIDENTS: tuple[Incident, ...] = (
         ),
         unmodelled=(
             "The operator who noticed. The tank has no equivalent of a residual-chlorine "
-            "measurement that would reveal a dose independently; the treatment works does, "
+            "measurement that would reveal a dose independently. The treatment works does, "
             "and W2 judges a dose ceiling there, but this row is scored against the tank "
             "evidence below rather than against the works."
         ),

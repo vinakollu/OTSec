@@ -90,7 +90,7 @@ def test_espionage_and_reconnaissance_are_out_of_scope():
     assert not by_key["havex"].in_scope
 
 def test_stuxnet_is_out_of_scope_because_of_where_it_ran():
-    """Not because the rules miss the pattern — they catch it. Because of vantage.
+    """Not because the rules miss the pattern, they catch it. Because of vantage.
 
     This is the distinction the catalogue exists to make. The scenario derived
     from Stuxnet is detected and its damage is prevented, and the incident is

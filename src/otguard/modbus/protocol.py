@@ -4,7 +4,7 @@ Written out rather than pulled from a library for two reasons. The proxy has to
 parse and rebuild frames itself in order to inspect writes, so this code has to
 exist somewhere regardless. And the one dependency that could have supplied it
 is mid-migration to a new datastore API that changes again in its next major
-version — pinning the core of the project to that is a poor trade for a protocol
+version, pinning the core of the project to that is a poor trade for a protocol
 that fits on a page.
 
 The independent check comes from the other direction instead: the demo drives

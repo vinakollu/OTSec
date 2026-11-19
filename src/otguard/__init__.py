@@ -1,4 +1,4 @@
-"""OTGuard — a physics-plausibility guard for OT/ICS command streams.
+"""OTGuard, a physics-plausibility guard for OT/ICS command streams.
 
 Instead of trying to recognise malicious traffic, the guard enforces the
 physics of the controlled process as an admission policy on commands. Its

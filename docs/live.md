@@ -32,8 +32,8 @@ is the outlier, and B6 names it.
 `tests/test_scan.py::test_two_stale_measurements_invert_the_majority_vote` is
 the same thing as an assertion.
 
-This is the threat model's stated failure — "an attacker who controls the field
-devices themselves can make all three measurements agree on the same lie" —
+This is the threat model's stated failure, "an attacker who controls the field
+devices themselves can make all three measurements agree on the same lie",
 reached without controlling any field device. Dropping two links is cheaper
 than compromising two meters, and it produces the same inversion.
 
@@ -66,7 +66,7 @@ limit check in one direction.
 
 **An unprobed device counts as reachable.** Answering "down" for a device
 nobody has looked at yet would drop every measurement out of the vote for the
-first few sweeps of every run — a blind spot the scanner would have created by
+first few sweeps of every run, a blind spot the scanner would have created by
 itself, in the window where a plant is starting up.
 
 ## The scanner
@@ -87,7 +87,7 @@ Three probes, and the difference between them matters:
 A probe records which of those it got, as `Evidence`, and a target can insist
 on a minimum. The default is `ANSWERED` rather than a bare socket, because the
 failure worth catching is a controller whose port still accepts while its scan
-loop has stopped — the case a connect-only check calls healthy. There is a test
+loop has stopped, the case a connect-only check calls healthy. There is a test
 for exactly that: a listener that accepts and never replies satisfies
 `TcpProbe` and fails `ModbusProbe`.
 
@@ -104,12 +104,12 @@ of the network rather than of the experiment.
 
 ### What is measured and what is modelled
 
-The tank's controller and guard are listening processes and are probed for
-real, by reading the level input register off each. The battery site is
-twenty-seven objects in one process; probing the addresses in its topology
-would report every one of them down. So the site is sensed through
+Both plants are objects in one process. Probing the addresses in either
+topology would report every device down, so each site is sensed through
 `ModelledNetwork`, and every such row is stamped `Evidence.MODEL` and carries
 `networked=False` through the event stream to both displays, which label it.
+The one place a probe reads a real socket is the OPC UA experiment, where the
+proxy and the simulated server are listening processes on loopback.
 
 A device table that mixes measurements with model reads and does not say which
 is worse than no table. Nothing here measures whether any of this works against
@@ -120,7 +120,7 @@ real hardware.
 One event stream, two renderers, neither of which may read the plant. Every
 number on either display arrived as an event, so a disagreement between the
 terminal and the browser is a rendering bug and never two opinions about the
-same tank.
+same plant.
 
 `EventBus.publish` never awaits. Each watcher has a bounded queue and a full
 queue drops its oldest event rather than making the producer wait. A browser on
@@ -158,25 +158,20 @@ answer should arrive while somebody is still asking.
 ## Running it
 
 ```bash
-python scripts/run_live.py battery         # the scripted site run
 python scripts/run_site.py                 # the storage site, interactive
+python scripts/run_water.py                # the treatment works, interactive
+python scripts/run_live.py battery         # the scripted site run, narrated
 python scripts/run_live.py battery --speed 25
-
-
-python scripts/run_water.py                # the treatment works
-python scripts/run_site.py                 # the storage site
 ```
 
-The tank half runs at real speed and cannot be accelerated: the guard's
-supervision loop sleeps on the wall clock, so running the plant faster would
-have the guard sampling it proportionally less often and would measure the
-wrong thing. The site half has no socket layer and is paced by the display.
+The scripted run has no socket layer and is paced by the display, so `--speed`
+changes how fast the simulated clock advances between frames. The interactive
+runs carry their own speed control on the page.
 
 ## What this does not show
 
-The scanner has never been pointed at real hardware. Twenty-five of the
-twenty-seven site rows are model reads, and the two that are not are a
-simulated controller and a proxy on loopback.
+The scanner has never been pointed at real hardware. Every site row is a model
+read.
 
 A probe that comes back clean proves that something answered. It does not prove
 the device is healthy, that it is the device we think it is, or that the answer
@@ -196,10 +191,9 @@ fix for it.
 
 ## One site per command
 
-Each site has its own invocation and none of them runs two. `run_live.py` takes
-the site as an argument and will not start without one; `run_site.py` and
-`run_water.py` are the interactive ones. `run_water.py` is the treatment works. The sites keep
-different time — the tank moves in seconds, the works in tens of minutes, the
-battery site in whatever the ramp takes — and a single command that played one
-after the other produced a transcript in which nobody could say afterwards
-which numbers had belonged to which plant.
+Each site has its own invocation and none of them runs two. `run_site.py` is
+the storage site and `run_water.py` is the treatment works, both interactive.
+`run_live.py` plays the scripted site run. The two plants keep different time,
+the works in tens of minutes and the battery site in whatever the ramp takes,
+and a single command that played one after the other produced a transcript in
+which nobody could say afterwards which numbers had belonged to which plant.

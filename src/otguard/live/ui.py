@@ -41,25 +41,25 @@ CORE_CSS = r"""
   --line:#243542; --line-soft:#1b2834;
   --ink:#e8eff5; --ink-2:#9db0c0; --ink-3:#8299ac;
   --good:#1fb880; --watch:#d9a21b; --breach:#f0616d; --idle:#5d7183;
-  --good-bg:rgba(31,184,128,.13); --watch-bg:rgba(217,162,27,.14);
-  --breach-bg:rgba(240,97,109,.14); --idle-bg:rgba(93,113,131,.13);
+  --good-bg:rgba(31,184,128.13); --watch-bg:rgba(217,162,27.14);
+  --breach-bg:rgba(240,97,109.14); --idle-bg:rgba(93,113,131.13);
   --s1:#588ffb; --s2:#d97534; --s3:#00af85; --s4:#9f7aec;
-  --water:#2f6fd0; --water-soft:rgba(47,111,208,.22);
+  --water:#2f6fd0; --water-soft:rgba(47,111,208.22);
   --radius:12px; --radius-s:8px;
   --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
   --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
-  --shadow:0 1px 2px rgba(0,0,0,.34),0 8px 24px -12px rgba(0,0,0,.6);
+  --shadow:0 1px 2px rgba(0,0,0.34),0 8px 24px -12px rgba(0,0,0.6);
 }
 :root[data-theme="light"]{
   --bg:#eef2f6; --surface:#ffffff; --surface-2:#f4f7fa; --raised:#eaeff5;
   --line:#d9e1e9; --line-soft:#e7edf3;
   --ink:#0d1b27; --ink-2:#4e5f6e; --ink-3:#5b6b7d;
   --good:#047857; --watch:#a16207; --breach:#b42318; --idle:#94a3b8;
-  --good-bg:rgba(4,120,87,.10); --watch-bg:rgba(161,98,7,.11);
-  --breach-bg:rgba(180,35,24,.10); --idle-bg:rgba(148,163,184,.14);
+  --good-bg:rgba(4,120,87.10); --watch-bg:rgba(161,98,7.11);
+  --breach-bg:rgba(180,35,24.10); --idle-bg:rgba(148,163,184.14);
   --s1:#1d4ed8; --s2:#c2410c; --s3:#047857; --s4:#6d28d9;
-  --water:#1d4ed8; --water-soft:rgba(29,78,216,.16);
-  --shadow:0 1px 2px rgba(16,34,51,.06),0 10px 26px -14px rgba(16,34,51,.26);
+  --water:#1d4ed8; --water-soft:rgba(29,78,216.16);
+  --shadow:0 1px 2px rgba(16,34,51.06),0 10px 26px -14px rgba(16,34,51.26);
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -175,7 +175,7 @@ PARTS_CSS = r"""
 .track{position:relative; height:9px; border-radius:5px; background:var(--surface-2);
   border:1px solid var(--line-soft); overflow:visible}
 .track .fill{position:absolute; inset:0 auto 0 0; border-radius:4px; background:var(--idle);
-  transition:width .35s cubic-bezier(.4,0,.2,1), background .25s linear}
+  transition:width .35s cubic-bezier(.4,0.2,1), background .25s linear}
 .track .fill.good{background:var(--good)} .track .fill.watch{background:var(--watch)}
 .track .fill.breach{background:var(--breach)}
 .track .mk{position:absolute; top:-3px; bottom:-3px; width:2px; background:var(--ink-3);
@@ -264,7 +264,7 @@ PARTS_CSS = r"""
   color:var(--ink); line-height:1.25}
 @media (max-width:1180px){
   .g-hero{grid-template-columns:repeat(2,1fr)}
-  .g-main,.g-split{grid-template-columns:1fr}
+  .g-main.g-split{grid-template-columns:1fr}
   .charts{grid-template-columns:1fr}
 }
 @media (max-width:640px){
@@ -540,7 +540,7 @@ function buildHero(p) {
     t.setAttribute("data-health", "idle");
     t.appendChild(el("div", "cap", m.label));
     var v = el("div", "val");
-    var b = el("b", null, "—"); b.id = "tv-" + m.key;
+    var b = el("b", null, ", "); b.id = "tv-" + m.key;
     v.appendChild(b); v.appendChild(el("span", null, m.unit));
     t.appendChild(v);
     var f = el("div", "foot");
@@ -566,13 +566,13 @@ function buildMeters(p) {
     tr.appendChild(fl);
     row.appendChild(tr);
     var fig = el("div", "fig");
-    var fv = el("span", null, "—"); fv.id = "mv-" + m.key;
+    var fv = el("span", null, ", "); fv.id = "mv-" + m.key;
     fig.appendChild(fv); fig.appendChild(el("em", null, m.unit));
     row.appendChild(fig);
     var st = el("div", "st");
     var chip = el("span", "chip idle"); chip.id = "mc-" + m.key;
     chip.appendChild(el("span", "glyph", "·"));
-    chip.appendChild(el("span", null, "—"));
+    chip.appendChild(el("span", null, ", "));
     st.appendChild(chip);
     row.appendChild(st);
     row.title = m.why;
@@ -587,7 +587,7 @@ function buildCharts(p) {
     var c = el("div", "chart");
     var hd = el("div", "hd");
     hd.appendChild(el("b", null, m.label));
-    var cur = el("span", null, "—"); cur.id = "cv-" + key;
+    var cur = el("span", null, ", "); cur.id = "cv-" + key;
     hd.appendChild(cur);
     c.appendChild(hd);
     var cv = document.createElement("canvas"); cv.id = "cc-" + key;
@@ -608,7 +608,7 @@ function buildAttacks(p) {
     var c = el("div", "card"); c.id = "atk-" + a.name;
     c.appendChild(el("h3", null, a.title));
     c.appendChild(el("p", null, a.story));
-    c.appendChild(el("div", "from", "from " + a.source + " — " + a.zone + " zone"));
+    c.appendChild(el("div", "from", "from " + a.source + ", " + a.zone + " zone"));
     var b = el("button", "primary", "Run this");
     b.onclick = function () { send("attack", {name: a.name}); };
     c.appendChild(b);

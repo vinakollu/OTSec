@@ -18,8 +18,8 @@ the hit rate.
 The first is where the commands came from. A bump-in-the-wire watches one
 conduit. Stuxnet executed on the controllers themselves, so its rotor commands
 never crossed a network link that a guard could have been installed on. That is
-not a gap in the rules. The rules recognise the pattern perfectly well — the
-scenario derived from it is detected and its damage is prevented — and the
+not a gap in the rules. The rules recognise the pattern perfectly well, the
+scenario derived from it is detected and its damage is prevented, and the
 incident is still something this device would have been blind to, because of
 where the device sits. A coverage table that scored Stuxnet as a hit on the
 strength of that scenario would be making a claim about geometry it has not

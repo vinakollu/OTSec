@@ -46,7 +46,7 @@ class SafetyConfig:
 
 @dataclass(frozen=True)
 class ModelConfig:
-    """The guard's nominal model of the plant — deliberately imperfect."""
+    """The guard's nominal model of the plant, deliberately imperfect."""
 
     area_m2: float = 1.0
     pump_max_flow_m3s: float = 0.052
@@ -163,7 +163,7 @@ class MegapackConfig:
     pack is tens of tonnes of cells and has a thermal time constant of hours,
     which would make every thermal scenario longer than the rest of the suite
     combined. It is compressed to give a time constant of ~20 minutes. The
-    direction of that error is safe to state plainly — a slower real plant gives
+    direction of that error is safe to state plainly, a slower real plant gives
     the guard's lookahead *more* warning, not less, so the compressed model is
     the pessimistic case for detection.
     """
@@ -190,7 +190,7 @@ class MegapackConfig:
     cooling_mw_per_c: float = 0.0035
     # Passive convection with the thermal-management system shut down. Two
     # orders of magnitude weaker than forced cooling, which is why disabling
-    # HVAC — not commanding more power — is the way to actually cook a pack:
+    # HVAC, not commanding more power, is the way to actually cook a pack:
     # normal full-power operation settles well inside limits, but the same
     # power with cooling off runs away.
     cooling_residual_mw_per_c: float = 0.00035
@@ -205,7 +205,7 @@ class SiteConfig:
 
     ``poi_limit_mw`` is contractual and writable; ``poi_rating_mw`` is the
     transformer nameplate and is not. The fleet is deliberately built larger
-    than the limit — 16 units at 1.927 MW against a 20 MW export limit — because
+    than the limit, 16 units at 1.927 MW against a 20 MW export limit, because
     that is how these sites are actually built, and it is what makes the limit a
     thing an attacker can violate rather than a physical impossibility.
     """
@@ -252,15 +252,15 @@ class CapabilityConfig:
 class EnergyConfig:
     """B2: state-of-charge conservation.
 
-    Tuned as a detector, not a tracker — the lesson the tank's R4 taught. A
+    Tuned as a detector, not a tracker, the lesson the tank's R4 taught. A
     filter with enough gain to follow the reported SoC will absorb an injected
     offset and go quiet exactly when it matters.
     """
 
     process_noise_soc: float = 2e-5
     sensor_noise_soc: float = 0.001
-    # Set so that a battery-management re-anchor at the top of charge — a
-    # bounded, one-off correction of a few percent — does not latch, while a
+    # Set so that a battery-management re-anchor at the top of charge, a
+    # bounded, one-off correction of a few percent, does not latch, while a
     # sustained offset large enough to hide over-discharge does.
     #
     # This is a magnitude discriminator, not a structural one, and it is worth
@@ -273,7 +273,7 @@ class EnergyConfig:
     # The slack has to exceed the largest *persistent* residual that honest
     # operation leaves behind, or the CUSUM integrates model error without
     # bound and alarms on any site given enough uptime. A latched alarm puts
-    # the estimator open-loop, so it can never re-converge afterwards — the
+    # the estimator open-loop, so it can never re-converge afterwards, the
     # failure compounds rather than settling.
     cusum_slack: float = 2.0
     latch_alarm: bool = True
@@ -292,7 +292,7 @@ class BalanceConfig:
 class SiteRampConfig:
     """B4: ramp limit, with an exemption for genuine frequency events.
 
-    A fast ramp is not suspicious in itself — it is what a battery is *for*
+    A fast ramp is not suspicious in itself, it is what a battery is *for*
     during a frequency excursion. What makes it suspicious is a fast ramp with
     the grid sitting at nominal. The exemption is the rule's whole point: it is
     physics supplying context, not a threshold being loosened.
@@ -303,7 +303,7 @@ class SiteRampConfig:
     # Must span at least one dispatch write period. A site controller issues a
     # ramp as a sequence of set-point steps, so a window shorter than its write
     # period contains exactly one step and measures the step height over the
-    # window length — roughly double the true rate — flagging every honest ramp.
+    # window length, roughly double the true rate, flagging every honest ramp.
     window_s: float = 4.0
 
 
@@ -320,7 +320,7 @@ class CrossSourceConfig:
     """B6: agreement between the three independent power measurements.
 
     This is the rule the water-tank project could not have. With three sources a
-    disagreement does not just raise an alarm — a majority vote names which
+    disagreement does not just raise an alarm, a majority vote names which
     source is lying, which is the difference between "something is wrong" and
     "the revenue meter is being spoofed, trust the relay".
     """
@@ -388,7 +388,7 @@ class SiteSupervisionConfig:
 
 @dataclass(frozen=True)
 class SiteModelConfig:
-    """The guard's model of the fleet — deliberately imperfect.
+    """The guard's model of the fleet, deliberately imperfect.
 
     Every value here is a few per cent away from the corresponding entry in
     :class:`MegapackConfig`. A guard tested against a model identical to the
@@ -421,7 +421,7 @@ class SiteModelConfig:
     # after referral is what sets the floor on how tight the cross-source
     # agreement band can be.
     aux_base_mw: float = 0.16
-    # House load rises with pack temperature — the thermal management system is
+    # House load rises with pack temperature, the thermal management system is
     # itself a load. Omitting this term costs about half a megawatt on a hot day,
     # which lands directly in the bus-to-POI referral and shows up as the
     # telemetry sum disagreeing with the meter and the relay.

@@ -11,7 +11,7 @@ value will absorb an injected offset within a couple of samples and go quiet
 exactly when it should be shouting. Low gain, CUSUM on the normalised residual,
 latched alarm.
 
-:class:`SourceVoter` answers *"which of my measurements is lying?"* — a question
+:class:`SourceVoter` answers *"which of my measurements is lying?"*, a question
 the tank version could not ask at all. With one level transmitter, a
 disagreement between model and sensor is ambiguous: either the sensor is being
 spoofed or the model is wrong. With three independent measurements of site
@@ -20,7 +20,7 @@ outlier is named rather than merely suspected.
 
 That distinction is the reason this add-on exists. The tank's stealthy-bias
 result was that residual detectors bound an attacker's *rate*, not their
-eventual displacement — ramp slowly enough and the CUSUM never accumulates.
+eventual displacement, ramp slowly enough and the CUSUM never accumulates.
 Voting is not subject to that bound. A slow bias on the revenue meter separates
 it from the relay and the telemetry sum at exactly the same rate it accumulates,
 and the separation is compared against the other sources' *current* agreement
@@ -209,7 +209,7 @@ class PackEstimator:
 class VoteResult:
     """The outcome of comparing the power measurements that are still arriving.
 
-    ``values`` holds every source's reading; ``counted`` holds the ones the vote
+    ``values`` holds every source's reading. ``counted`` holds the ones the vote
     was actually taken over. Those differ when the scanner has found a source
     that is no longer being refreshed, and keeping both means a report can say
     what the guard ignored rather than silently narrowing.
@@ -232,7 +232,7 @@ class VoteResult:
         """Does the vote still have the quorum to say *which* source is lying?
 
         Three sources name a liar: two agree and the third does not. Two can
-        only notice that they disagree, which is the tank's predicament again —
+        only notice that they disagree, which is the tank's predicament again,
         a detector that bounds how fast a lie can grow but not how far. One is
         no cross-check at all. Saying this out loud in the result is better
         than a median of two that silently reads like a consensus.
@@ -318,7 +318,7 @@ class SourceVoter:
         interconnection. The telemetry sum measures at the LV bus, upstream of
         the house load and the transformer, so it reads high on export by
         several hundred kilowatts. Comparing the raw numbers makes the telemetry
-        sum a permanent outlier and the vote meaningless — which is exactly what
+        sum a permanent outlier and the vote meaningless, which is exactly what
         the first version of this did.
         """
         values = {src: observation.measurement(src) for src in MeasurementSource}
@@ -435,7 +435,7 @@ class SourceVoter:
                 self.alarm_detail = (
                     f"{src.label} has diverged from the other two measurements of site "
                     f"power for long enough to rule out noise "
-                    f"(CUSUM {value:.1f} over {self.cfg.cusum_threshold:g}; "
+                    f"(CUSUM {value:.1f} over {self.cfg.cusum_threshold:g}, "
                     f"currently {result.values[src]:+.3f} MW against a consensus of "
                     f"{result.consensus_mw:+.3f} MW). Trust the majority, not this source."
                 )

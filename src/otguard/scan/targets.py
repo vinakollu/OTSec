@@ -81,8 +81,8 @@ def site_targets(
 
     A Megapack counts as answering when its link is up *and* the unit reports
     itself online. Those are two different failures that look the same from
-    SCADA — a unit that has tripped still answers, a unit behind a dead switch
-    does not — and the detail string says which one happened, because the
+    SCADA, a unit that has tripped still answers, a unit behind a dead switch
+    does not, and the detail string says which one happened, because the
     remedy is a different person in a different building.
     """
     network = network or ModelledNetwork()

@@ -2,8 +2,8 @@
 
 A scenario suite the author wrote scoring 13/13 is not evidence that a design
 generalises. It is evidence that the design handles the thirteen cases its
-author thought of. What tells you something is a sweep — vary one attacker
-parameter continuously and find the value at which detection fails — because
+author thought of. What tells you something is a sweep, vary one attacker
+parameter continuously and find the value at which detection fails, because
 the boundary is a property of the mechanism rather than of the example.
 
 Three sweeps here, chosen because each targets a different rule's claim.
@@ -12,7 +12,7 @@ Three sweeps here, chosen because each targets a different rule's claim.
     The headline claim. The tank version's stealthy-bias result was that a
     residual detector bounds an attacker's *rate*: ramp slowly enough and the
     CUSUM never accumulates, so the attack succeeds outright. Cross-source
-    voting should bound *displacement* instead — the slow attacker still gets
+    voting should bound *displacement* instead, the slow attacker still gets
     caught, just later. The sweep reports bias-at-detection against ramp rate;
     if the claim holds, that column is roughly flat over orders of magnitude.
     Run with voting disabled it reproduces the tank's blind spot, which is the
@@ -26,7 +26,7 @@ Three sweeps here, chosen because each targets a different rule's claim.
 ``sweep_dispatch_creep``
     The adversarial case for B3. Its incremental test fires only when a command
     makes an existing excursion worse, which is what keeps it from blocking a
-    recovery — and is also an escape hatch. An attacker who creeps upward in
+    recovery, and is also an escape hatch. An attacker who creeps upward in
     small enough steps stays under the margin on every individual write. The
     sweep finds the step size at which that stops working and, more usefully,
     how far over the export limit the site gets before it does.
@@ -214,7 +214,7 @@ def sweep_dispatch_creep(
 
         # Establish the baseline the creep starts from, gently enough that the
         # ramp rule has nothing to say about it. Without this the sweep measures
-        # B4 catching the step from zero on the first write — which it does, at
+        # B4 catching the step from zero on the first write, which it does, at
         # every step size, making the result look like a uniform detection and
         # telling you nothing about B3.
         baseline_until = 120.0

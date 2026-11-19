@@ -10,7 +10,7 @@ Two site-level facts drive most of the rules:
 
 *The fleet can out-produce the interconnection.* Sixteen 1.927 MW units is about
 30.8 MW of inverter behind a 20 MW export limit and a 25 MVA transformer. That
-is the normal way these sites are built — the limit binds, the site controller
+is the normal way these sites are built, the limit binds, the site controller
 enforces it, and an attacker who can move set-points can exceed it. The
 transformer, not the contract, is what fails.
 
@@ -23,7 +23,7 @@ explicitly named as the reason its stealthy-bias attack could not be caught.
 
 Grid frequency and fault current are exogenous here: a 20 MW site does not move
 a synchronous grid, so treating frequency as an input rather than a state is the
-honest simplification. It also gives the guard a piece of *context* — a fast
+honest simplification. It also gives the guard a piece of *context*, a fast
 ramp is plausible during a frequency excursion and suspicious without one.
 """
 
@@ -100,7 +100,7 @@ class BessSite:
         self._rng = random.Random(seed)
         # The contractual export limit. Distinct from ``poi_rating_mw``, which is
         # the transformer's nameplate and cannot be edited by anyone on the
-        # network — that gap is what rule B3 uses to catch limit tampering.
+        # network, that gap is what rule B3 uses to catch limit tampering.
         self.poi_limit_mw = cfg.poi_limit_mw
         self.ramp_limit_mw_s = cfg.ramp_limit_mw_s
         # Whether each measurement's communications link is up. A meter whose
@@ -194,7 +194,7 @@ class BessSite:
 
         Either the far side is dead (nothing to synchronise against) or the two
         systems match in voltage, frequency and phase angle. Closing out of sync
-        slams the machines together; on a real site this is what the 25 relay
+        slams the machines together. On a real site this is what the 25 relay
         exists to prevent, and it is one of the few OT actions that destroys
         equipment in a single cycle.
         """

@@ -3,7 +3,7 @@
 The tank and the storage site each had one quantity worth protecting: a level,
 and a power. A treatment works has several, they are measured in different
 units, and the dangerous ones are chemical rather than mechanical. Nothing here
-can be reduced to "is the number too big" — 11,100 ppm of sodium hydroxide is a
+can be reduced to "is the number too big", 11,100 ppm of sodium hydroxide is a
 perfectly ordinary number for a chemical that is dosed in parts per million,
 and it is the number that nearly poisoned Oldsmar.
 

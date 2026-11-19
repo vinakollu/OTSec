@@ -36,8 +36,8 @@ works that has not. An instrument-watching defence has nothing to say during
 the interval in which the decision was made.
 
 **The quantity that decides whether the water is safe is not measured at all.**
-CT — residual chlorine multiplied by the time the water spent in the contact
-tank — is the figure that says whether the bacteria are dead. No instrument on
+CT, residual chlorine multiplied by the time the water spent in the contact
+tank, is the figure that says whether the bacteria are dead. No instrument on
 the site reads it. It has to be computed from a chlorine analyser, a level
 gauge and a flow meter, which means an attacker who moves any one of the three
 moves it, and an attacker who opens the high-lift pumps collapses it while
@@ -54,7 +54,7 @@ Eight stages, in order: raw water intake, coagulation, flocculation,
 sedimentation, filtration, disinfection, the clearwell, and distribution.
 
 The model is a first-order one and the figures are the ones a works this size
-runs at — about 1,100 m³/h of production, raw water near 3.5 NTU, a settled
+runs at, about 1,100 m³/h of production, raw water near 3.5 NTU, a settled
 turbidity around 0.5 NTU, filtered water under 0.05 NTU, a chlorine residual of
 about 0.5 mg/L leaving the works, and three quarters of an hour of contact. It
 is a simulation for a guard to reason about, not a design tool.
@@ -65,7 +65,7 @@ flattered the guard:
 A **filter fed water a clarifier should have cleaned** stops removing before it
 stops passing. The first version let filter efficiency hold near its design
 figure however dirty the arriving water was, so cutting the coagulant produced
-0.26 NTU — untidy, legal and survivable. Sand beds are sized for what a working
+0.26 NTU, untidy, legal and survivable. Sand beds are sized for what a working
 clarifier hands them; several times that and particles go through. With the
 overload term, cutting the coagulant breaches the turbidity limit and, because
 all that mud consumes chlorine, breaks disinfection as well.
@@ -132,7 +132,7 @@ some horizon.
 ## What the page shows
 
 Six headline figures, then the process schematic with live values at every
-stage, then all fourteen measurements as a meter list — one row each, with the
+stage, then all fourteen measurements as a meter list, one row each, with the
 bar drawn against that measurement's own limits and the limit marks on the
 track. Four charts carry recent history with the allowed range shaded. The
 network panel lists the zones, their devices and the conduits.
@@ -172,7 +172,7 @@ Nine, each the shape of something that has happened.
 | A command from outside | a write from the vendor's remote support connection |
 
 Each one is tested twice, and both halves have to hold. With the guard watching
-only, the attack must actually damage the water — an attack that does nothing
+only, the attack must actually damage the water, an attack that does nothing
 unguarded proves nothing about the guard that blocked it. With the guard
 enforcing, no harm may occur and at least one command must have been refused,
 so that the saving cannot be the plant quietly recovering on its own.
@@ -183,8 +183,8 @@ the guard took credit for a save its victim had already made.
 
 ## The one number that matters most
 
-Nine hundred simulated seconds of the works running itself — dosing paced to
-flow and turbidity, pumps trimmed to hold the clearwell — produce fifty-seven
+Nine hundred simulated seconds of the works running itself, dosing paced to
+flow and turbidity, pumps trimmed to hold the clearwell, produce fifty-seven
 commands across the guard and **none refused**. That is the figure to read
 first. A guard that objects to a plant operating normally has not made the
 works safer, it has taken it off line, and every attack it then catches is

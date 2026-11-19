@@ -6,11 +6,10 @@ operator's would. An attack is launched when somebody asks for one, the guard
 can be switched to watch-only, and both of those are the demonstration rather
 than a feature.
 
-One honesty note that belongs at the top. The tank demonstration runs its
-masters, its guard and its controller over real loopback sockets speaking real
-Modbus. This one runs in process. The twenty-two devices, six zones and six
-conduits in :mod:`otguard.water.topology` are a model of an OT environment,
-not twenty-two listening servers, and the display says so. What is not
+One honesty note that belongs at the top. This demonstration runs in process.
+The twenty-two devices, six zones and six conduits in
+:mod:`otguard.water.topology` are a model of an OT environment, not
+twenty-two listening servers, and the display says so. What is not
 modelled is the guard: every verdict here is the real rule set reaching a real
 decision on a real predicted plant state, and the plant it predicts over is the
 same simulation the water is flowing through.
@@ -82,7 +81,7 @@ ATTACKS: tuple[Attack, ...] = (
         "Somebody on the operator's screen raises the chlorine dose ceiling and "
         "then doses far above it. This is the shape of what happened at a water "
         "plant in Florida in 2021, where a dosing set-point was raised about a "
-        "hundredfold. Who sent that write is still disputed; what a write of "
+        "hundredfold. Who sent that write is still disputed. What a write of "
         "this shape does to the water is not.",
         "hmi", "supervisory", "HMI-01",
         ((0.0, K.MAX_CHLORINE_DOSE, 11.0), (12.0, K.CHLORINE_DOSE, 9.5)), 600.0,
@@ -90,7 +89,7 @@ ATTACKS: tuple[Attack, ...] = (
     Attack(
         "caustic_overdose", "Caustic overdose",
         "The caustic soda ceiling is raised and the dose pushed up with it. "
-        "Caustic soda is the chemical the Florida case actually involved; too "
+        "Caustic soda is the chemical the Florida case actually involved. Too "
         "much of it makes the water burn and strips metal out of the pipes.",
         "hmi", "supervisory", "HMI-01",
         ((0.0, K.MAX_CAUSTIC_DOSE, 60.0), (12.0, K.CAUSTIC_DOSE, 48.0)), 600.0,
@@ -304,8 +303,8 @@ class WaterDemo:
         and it is wrong: the loop also has to observe, assess fourteen metrics
         and publish, so at any interesting speed it cannot complete an
         iteration in a scaled second. The plant then runs slower than the clock
-        on the screen, and every rate shown beside it — a tank draining, a dose
-        reaching an analyser — is understated by whatever the loop could not
+        on the screen, and every rate shown beside it, a tank draining, a dose
+        reaching an analyser, is understated by whatever the loop could not
         keep up with. Reading the elapsed time off the clock instead keeps the
         physics and the display on the same timeline at any speed.
         """
@@ -374,45 +373,144 @@ class WaterDemo:
     # ------------------------------------------------------------------
     # The plant's own control
     # ------------------------------------------------------------------
-    async def _control_loop(self) -> None:
-        """What SCADA does when nobody is attacking it.
+    # ------------------------------------------------------------------
+    # Who writes to this plant
+    # ------------------------------------------------------------------
+    #: The supervisory devices whose traffic crosses the guard, how often each
+    #: one writes, and what it is allowed to touch.
+    #:
+    #: A works is not one machine writing one register on a timer. The SCADA
+    #: server refreshes its dosing and pumping set-points continuously, an
+    #: operator at the HMI makes an occasional adjustment by hand, and an
+    #: engineer re-asserts a configuration limit now and then. Three writers
+    #: on three cadences is what the guard actually sees, and a demonstration
+    #: with one writer on a fixed rotation makes the provenance rule look
+    #: decorative because every command it ever sees comes from the same
+    #: place.
+    SUPERVISORY = (
+        ("SCADA-01", "scada", "supervisory", (16.0, 34.0)),
+        ("HMI-01", "hmi", "supervisory", (150.0, 420.0)),
+        ("ENG-01", "engineering", "operations", (600.0, 1500.0)),
+    )
 
-        Dosing paced to flow and turbidity, and the high-lift pumps trimmed to
-        hold the clearwell. This is the traffic that must never be refused: if
-        the guard objects to the plant running itself, nothing else it says
-        means anything.
+    #: The five controllers, and the loop each one runs on its own.
+    #:
+    #: None of this crosses the guard. A bump-in-the-wire on the conduit from
+    #: the supervisory network to the control network does not see a PLC
+    #: regulating its own stage, and pretending otherwise would overstate what
+    #: the device covers. It is published so the page can show the plant
+    #: working below the line as well as above it.
+    LOCAL_LOOPS = (
+        ("PLC-INTAKE", "holding the raw water flow"),
+        ("PLC-CHEM", "pacing coagulant to flow"),
+        ("PLC-FILTER", "trimming the filter valve"),
+        ("PLC-DISINFECT", "holding the chlorine residual"),
+        ("PLC-DIST", "regulating mains pressure"),
+    )
+
+    async def _control_loop(self) -> None:
+        """Start every writer this plant has, each on its own clock."""
+        for device, source, zone, period in self.SUPERVISORY:
+            self._tasks.append(asyncio.create_task(
+                self._writer_loop(device, source, zone, period)))
+        self._tasks.append(asyncio.create_task(self._local_loop()))
+
+    async def _writer_loop(self, device: str, source: str, zone: str,
+                           period: tuple[float, float]) -> None:
+        """One supervisory device, writing on its own irregular cadence.
+
+        The interval is drawn fresh each time rather than fixed. Real traffic
+        does not arrive on a metronome, and a rate rule tuned against a
+        metronome is tuned against something no plant produces.
         """
+        rng = random.Random(f"{self._seed}:{device}")
+        await self.clock.sleep(rng.uniform(1.0, period[0]))
         try:
             while True:
-                await self.clock.sleep(15.0)
+                await self.clock.sleep(rng.uniform(*period))
                 if not self._control_enabled or self.guard.locked_out:
                     continue
-                s = self.plant.state
-                needed = self.works_cfg.coagulant_demand_per_ntu * s.raw_turbidity_ntu
-                demand = self.guard.estimator.chlorine_demand()
-                target_dose = round(demand + 0.95, 2)
-                # Hold the clearwell near three and a half metres. The pump
-                # speed is set from the flow coming in, with a small trim on
-                # level, rather than from the level error alone. A pure level
-                # controller re-reading every twenty seconds winds the pump
-                # down faster than a tank this size can answer, and walks
-                # itself into the pressure limit with nobody attacking it.
-                balance = 100.0 * s.raw_flow_m3h / self.works_cfg.max_high_lift_flow_m3h
-                trim = (s.clearwell_level_m - 3.5) * 5.0
-                speed = max(30.0, min(92.0, balance + trim))
+                for kind, value in self._plan(source, rng):
+                    self._issue(kind, value, source=source, zone=zone,
+                                device=device)
+                    await self.clock.sleep(rng.uniform(0.4, 1.6))
+        except asyncio.CancelledError:
+            raise
 
-                # Write one setpoint per cycle, in rotation, whether or not it
-                # has moved. SCADA refreshes its outputs rather than writing
-                # only on change, and a guard that sees traffic only when
-                # something changes has no idea whether it is still in the path.
-                self._turn = (self._turn + 1) % 4
-                point, value = (
-                    (K.COAGULANT_DOSE, round(needed, 2)),
-                    (K.CHLORINE_DOSE, target_dose),
-                    (K.HIGH_LIFT_PUMP, round(speed, 1)),
-                    (K.CAUSTIC_DOSE, round(s.caustic_dose_mg_l, 2)),
-                )[self._turn]
-                self._issue(point, value)
+    def _plan(self, source: str, rng: random.Random) -> list[tuple[K, float]]:
+        """What this writer has to say about the plant right now."""
+        s = self.plant.state
+        if source == "scada":
+            # The automatic control, refreshing its own outputs. It writes
+            # whether or not the number has moved, because a guard that sees
+            # traffic only when something changes has no way of knowing it is
+            # still in the path.
+            needed = self.works_cfg.coagulant_demand_per_ntu * s.raw_turbidity_ntu
+            demand = self.guard.estimator.chlorine_demand()
+            # Pump speed from the flow coming in, with a small trim on level.
+            # A pure level controller re-reading every twenty seconds winds
+            # the pump down faster than a tank this size can answer, and walks
+            # itself into the pressure limit with nobody attacking it.
+            balance = 100.0 * s.raw_flow_m3h / self.works_cfg.max_high_lift_flow_m3h
+            trim = (s.clearwell_level_m - 3.5) * 5.0
+            speed = max(30.0, min(92.0, balance + trim))
+            pool = [
+                (K.COAGULANT_DOSE, round(needed, 2)),
+                (K.CHLORINE_DOSE, round(demand + 0.95, 2)),
+                (K.HIGH_LIFT_PUMP, round(speed, 1)),
+                (K.CAUSTIC_DOSE, round(s.caustic_dose_mg_l, 2)),
+                (K.FILTER_VALVE, round(s.filter_valve_pct, 1)),
+                (K.RAW_VALVE, round(s.raw_valve_pct, 1)),
+            ]
+            rng.shuffle(pool)
+            return pool[:rng.randint(1, 3)]
+        if source == "hmi":
+            # An operator making one adjustment by hand. Small, deliberate,
+            # and nothing a rule should object to.
+            choice = rng.choice(("paddle", "polymer", "intake"))
+            if choice == "paddle":
+                return [(K.FLOC_PADDLE,
+                         round(min(85.0, max(45.0, s.floc_paddle_pct
+                                             + rng.uniform(-6.0, 6.0))), 1))]
+            if choice == "polymer":
+                return [(K.POLYMER_DOSE,
+                         round(max(0.0, s.polymer_dose_mg_l
+                                   + rng.uniform(-0.05, 0.05)), 3))]
+            return [(K.INTAKE_PUMP,
+                     round(min(80.0, max(50.0, s.intake_pump_pct
+                                         + rng.uniform(-3.0, 3.0))), 1))]
+        # The engineer, re-asserting a configuration limit at the value it is
+        # supposed to hold. Writing a ceiling back to where it already was is
+        # the ordinary traffic the dose rule has to let through, and it shares
+        # its shape exactly with the attack that raises one.
+        if rng.random() < 0.5:
+            return [(K.MAX_CHLORINE_DOSE, round(s.max_chlorine_dose_mg_l, 2))]
+        return [(K.TURBIDITY_ALARM, round(self.safety.turbidity_action_ntu, 2))]
+
+    async def _local_loop(self) -> None:
+        """The controllers regulating their own stages, below the guard.
+
+        These never reach :meth:`_issue`, because they never cross the conduit
+        the guard sits on. They are reported so the page can show that most of
+        what a works does happens where this device cannot see it, which is a
+        limit of the deployment rather than of the rules.
+        """
+        rng = random.Random(f"{self._seed}:local")
+        try:
+            while True:
+                await self.clock.sleep(rng.uniform(8.0, 22.0))
+                if not self._control_enabled:
+                    continue
+                device, doing = rng.choice(self.LOCAL_LOOPS)
+                self.bus.publish(LiveEvent(Kind.VERDICT, self._now(), {
+                    "decision": "local", "source": "plc", "device": device,
+                    "zone": "control", "point": "local_loop",
+                    "point_label": doing, "value": 0.0, "unit": "",
+                    "stage": "", "role": "", "rules": [], "latency_us": 0.0,
+                    "headline": f"{device} is {doing}.",
+                    "detail": "",
+                    "severity": "info", "tag": "local",
+                }))
         except asyncio.CancelledError:
             raise
 

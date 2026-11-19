@@ -11,7 +11,7 @@ Three properties of it do the work this project cares about.
 **Inertia, again.** Water takes minutes to cross the works. A dose entering the
 chlorine injector now is not measurable at the residual analyser for several
 minutes, so a command and its consequence are separated by a transport delay.
-The tank's argument was that a level cannot jump; here a dose cannot be
+The tank's argument was that a level cannot jump. Here a dose cannot be
 unsent, which is worse.
 
 **Chemistry does not look dangerous.** A chlorine dose is a small number in
@@ -144,7 +144,10 @@ class WaterWorks:
         self.state.raw_turbidity_ntu = max(1.2, self.rng.gauss(3.6, 1.1))
         self.state.raw_ph = min(8.2, max(6.9, self.rng.gauss(7.6, 0.18)))
         self.state.clearwell_level_m = self.rng.uniform(2.6, 4.3)
-        self.state.max_chlorine_dose_mg_l = 5.0
+        # Inside what the dose rule will authorise, with room to spare. A
+        # works that ships with a ceiling its own guard refuses is a works
+        # whose first ordinary configuration write is a false alarm.
+        self.state.max_chlorine_dose_mg_l = 4.5
         self._cl_delay = _Delay(self.cfg.chlorine_transport_s, self.cfg.dt_s)
         self._coag_delay = _Delay(
             self.cfg.coagulant_transport_s, self.cfg.dt_s,
@@ -301,7 +304,7 @@ class WaterWorks:
         target_p = 0.3 + 4.4 * (s.high_lift_pump_pct / 100.0) * (0.35 + 0.65 * head)
         # Suction. Below the pumps' intake the column breaks and they pass air
         # instead of water, so pressure does not sag gently towards a low value
-        # — it goes.
+        #, it goes.
         if s.clearwell_level_m < cfg.pump_suction_level_m:
             target_p *= _clamp(s.clearwell_level_m / cfg.pump_suction_level_m, 0.0, 1.0) ** 2
         if outflow < cfg.town_demand_m3h * 0.55:

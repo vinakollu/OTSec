@@ -74,41 +74,6 @@ def scenario(t: float, *, plant: str, name: str, summary: str, guarded: bool) ->
     })
 
 
-def tank_state(
-    t: float,
-    *,
-    level_m: float,
-    reported_m: float,
-    pump_pct: float,
-    valve_pct: float,
-    limit_m: float,
-    floor_m: float,
-    height_m: float,
-    believed_m: float,
-    overflowed: bool,
-    dried_out: bool,
-) -> LiveEvent:
-    """Where the tank is.
-
-    ``level_m`` is the truth, ``reported_m`` is what the sensor says and
-    ``believed_m`` is the guard's estimate. Carrying all three is the point: in
-    a false-data attack they come apart, and a display that showed one number
-    would be showing the attacker's number.
-    """
-    return LiveEvent(Kind.STATE, t, {
-        "plant": "tank",
-        "level_m": round(level_m, 4),
-        "reported_m": round(reported_m, 4),
-        "believed_m": round(believed_m, 4),
-        "pump_pct": round(pump_pct, 2),
-        "valve_pct": round(valve_pct, 2),
-        "limit_m": limit_m,
-        "floor_m": floor_m,
-        "height_m": height_m,
-        "overflowed": bool(overflowed),
-        "dried_out": bool(dried_out),
-    })
-
 
 def site_state(
     t: float,

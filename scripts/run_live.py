@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Watch the guard work, rather than read about it afterwards.
 
-``run_demo.py`` runs an attack to completion in silence and prints a table. It
-is the right shape for a result and the wrong shape for understanding what
-happened, because everything interesting — the level climbing, the write
-arriving, the rule objecting, the guard taking the valve — happens in the
-minute you spent looking at a blank terminal.
+The evaluation harness runs a scenario to completion in silence and prints a
+table. That is the right shape for a result and the wrong shape for
+understanding what happened, because everything interesting, the power
+climbing, the write arriving, the rule objecting, the guard holding the
+set-point, happens in the minute you spent looking at a blank terminal.
 
 This runs the same stack and narrates it as it goes, to a terminal that
 redraws in place and to a browser page, both fed from one event stream so they
@@ -13,27 +13,21 @@ cannot disagree. The device scanner runs alongside, and on the site half its
 output is wired into the guard's cross-source vote, which is where it stops
 being decoration.
 
-    python scripts/run_live.py tank
     python scripts/run_live.py battery
-    python scripts/run_live.py tank --no-web    # terminal only
-    python scripts/run_live.py tank --port 9000
+    python scripts/run_live.py battery --no-web    # terminal only
+    python scripts/run_live.py battery --port 9000
 
-One site per run, named on the command line. The sites are on different
-timescales and tell different stories, and a single invocation that plays one
-after the other leaves nobody able to say which numbers belonged to which. The
-water treatment works has its own command, ``scripts/run_water.py``, for the
-same reason.
-
-**The tank.** The real stack over real sockets: a simulated controller, the
-guard proxy in front of it, and an attacker driving a stock ``pymodbus``
-client. Individually legal commands that together fill the tank. The scanner
-probes the controller and the guard by reading a register off each.
+One site per run, named on the command line. Each site is on its own
+timescale and tells its own story, and a single invocation that plays one
+after another leaves nobody able to say which numbers belonged to which. The
+treatment works has its own command, ``scripts/run_water.py``, and the site
+has an interactive one, ``scripts/run_site.py``, for the same reason.
 
 **The battery site.** Sixteen units, three independent measurements of the
 same power, and two of the three measurement links cut while the site ramps
 down. It runs twice: once with the scanner telling the guard which
 measurements are still arriving, and once without. The second run is the
-control, and it is the interesting one — two stale readings agree with each
+control, and it is the interesting one, two stale readings agree with each
 other, so the majority vote names the one honest instrument as the liar.
 """
 
@@ -48,29 +42,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from pymodbus.client import AsyncModbusTcpClient  # noqa: E402
-
 from otguard.bess.site import BessSite  # noqa: E402
 from otguard.bess.types import MeasurementSource  # noqa: E402
 from otguard.config import Config, load_config  # noqa: E402
 from otguard.guard.site_guard import SiteGuard  # noqa: E402
 from otguard.live import EventBus, LiveServer, TerminalView  # noqa: E402
 from otguard.live import events as ev  # noqa: E402
-from otguard.modbus import GuardedModbusProxy, SimulatedPLC  # noqa: E402
-from otguard.modbus.registers import (  # noqa: E402
-    HR_PUMP_CMD,
-    HR_VALVE_CMD,
-    IR_LEVEL,
-    LEVEL_SCALE,
-    PCT_SCALE,
-)
-from otguard.scan import Scanner, site_targets, tank_targets  # noqa: E402
+from otguard.scan import Scanner, site_targets  # noqa: E402
 
-ATTACKS = ("overflow", "dryout", "out_of_envelope", "water_hammer")
-
-#: How often the display is refreshed with the plant's state. Fast enough that
-#: a tank filling looks like it is filling, slow enough that the feed is
-#: readable.
+#: How often the display is refreshed with the site's state. Fast enough that
+#: a ramp looks like a ramp, slow enough that the feed stays readable.
 _FRAME_S = 0.2
 
 
@@ -103,174 +84,6 @@ class Live:
             critical=target.critical,
             rtt_ms=status.last_rtt_ms,
         ))
-
-
-# ----------------------------------------------------------------------
-# The water tank, over real sockets
-# ----------------------------------------------------------------------
-async def _drive_attack(client: AsyncModbusTcpClient, attack: str, duration_s: float) -> None:
-    """The same attacks ``run_demo.py`` plays, at the same endpoint."""
-    if attack == "overflow":
-        await client.write_register(HR_VALVE_CMD, 0)
-        await client.write_register(HR_PUMP_CMD, int(100 * PCT_SCALE))
-        await asyncio.sleep(duration_s)
-    elif attack == "dryout":
-        await client.write_register(HR_PUMP_CMD, 0)
-        await client.write_register(HR_VALVE_CMD, int(100 * PCT_SCALE))
-        await asyncio.sleep(duration_s)
-    elif attack == "out_of_envelope":
-        for value in (2500, 1800, 0xFF38):  # 250 %, 180 %, and -20 % as a signed word
-            await client.write_register(HR_VALVE_CMD, value)
-            await asyncio.sleep(1.0)
-        await asyncio.sleep(min(duration_s, 6.0))
-    elif attack == "water_hammer":
-        loop = asyncio.get_event_loop()
-        deadline = loop.time() + min(duration_s, 20.0)
-        state = True
-        while loop.time() < deadline:
-            await client.write_register(HR_VALVE_CMD, int((100 if state else 0) * PCT_SCALE))
-            state = not state
-            await asyncio.sleep(0.4)
-    else:  # pragma: no cover - argparse restricts this
-        raise ValueError(f"unknown attack {attack!r}")
-
-
-async def tank_scenario(live: Live, attack: str, duration_s: float) -> dict:
-    """Stand up the tank stack, run one attack through the guard, narrate it."""
-    config = live.config
-    plc = SimulatedPLC(config, port=0, initial_level_m=0.95)
-    await plc.start()
-    proxy = GuardedModbusProxy(config, plc_host="127.0.0.1", plc_port=plc.port, listen_port=0)
-    await proxy.start()
-
-    scanner = Scanner(config.scan, targets=tank_targets(
-        plc_port=plc.port, proxy_port=proxy.listen_port, timeout_s=config.scan.timeout_s
-    ))
-
-    live.emit(ev.scenario(
-        0.0, plant="tank", name=attack, guarded=True,
-        summary={
-            "overflow": "valve shut and pump full: two legal commands that fill the tank",
-            "dryout": "pump off and valve open: the tank drains until the pump runs dry",
-            "out_of_envelope": "valve positions the equipment cannot physically take",
-            "water_hammer": "the valve slammed open and shut until the pipe splits",
-        }[attack],
-    ))
-
-    stop = asyncio.Event()
-    painter = asyncio.create_task(_tank_painter(live, plc, proxy, scanner, stop))
-
-    client = AsyncModbusTcpClient("127.0.0.1", port=proxy.listen_port)
-    await client.connect()
-    if not client.connected:
-        raise RuntimeError("the attacker's client could not reach the guard")
-    try:
-        await _drive_attack(client, attack, duration_s)
-    finally:
-        client.close()
-        stop.set()
-        await painter
-
-    state = plc.tank.state
-    damaged = state.overflowed or state.dried_out
-    outcome = "the tank was damaged" if damaged else "the tank is intact"
-    lines = [
-        f"final level {state.level_m:.3f} m",
-        f"{proxy.stats.writes_blocked} writes blocked, "
-        f"{proxy.stats.trips_issued} protective trips",
-        f"{proxy.stats.writes_inspected} writes inspected over "
-        f"{proxy.stats.frames_forwarded} frames",
-    ]
-    live.emit(ev.done(_now(proxy), plant="tank", name=attack, outcome=outcome, lines=lines))
-
-    # The proxy holds a persistent poll connection to the controller, and on
-    # 3.12 and later a server's wait_closed() waits for its clients, so the
-    # order here is not cosmetic: stopping the controller first hangs.
-    await proxy.stop()
-    await plc.stop()
-    return {"damaged": damaged, "level_m": state.level_m,
-            "blocked": proxy.stats.writes_blocked, "trips": proxy.stats.trips_issued}
-
-
-def _now(proxy: GuardedModbusProxy) -> float:
-    return proxy._now()
-
-
-def _reported_level(plc: SimulatedPLC) -> float:
-    """The level as the HMI would read it, noise and all.
-
-    Taken from the input register rather than by calling ``tank.measure()``,
-    which would draw fresh noise and show a number nobody on the wire ever saw.
-    """
-    raw = plc.input[IR_LEVEL]
-    if raw >= 0x8000:
-        raw -= 0x10000
-    return raw / LEVEL_SCALE
-
-
-async def _tank_painter(
-    live: Live, plc: SimulatedPLC, proxy: GuardedModbusProxy, scanner: Scanner,
-    stop: asyncio.Event,
-) -> None:
-    """Sample the plant, drain the guard's new verdicts, sweep the scanner."""
-    seen_verdicts = 0
-    seen_events = 0
-    sweep_due = 0.0
-    guard = proxy.guard
-
-    while not stop.is_set():
-        t = proxy._now()
-
-        # Verdicts the proxy has recorded since the last frame. Reading its
-        # lists rather than installing callbacks keeps the proxy untouched.
-        while seen_verdicts < len(proxy.verdicts):
-            verdict = proxy.verdicts[seen_verdicts]
-            seen_verdicts += 1
-            live.emit(ev.command(
-                verdict.command.t, source="hmi01", kind=verdict.command.kind.value,
-                value=verdict.command.value, unit=verdict.command.kind.unit,
-            ))
-            live.emit(ev.verdict(
-                verdict.command.t,
-                decision=verdict.decision.value,
-                source="hmi01",
-                point=verdict.command.kind.value,
-                value=verdict.command.value,
-                unit=verdict.command.kind.unit,
-                rules=verdict.rule_ids,
-                detail="; ".join(f.detail for f in verdict.findings),
-                latency_us=verdict.latency_us,
-            ))
-
-        while seen_events < len(proxy.events):
-            event = proxy.events[seen_events]
-            seen_events += 1
-            live.emit(ev.trip(
-                event.t if hasattr(event, "t") else t,
-                direction=getattr(event, "direction", "") or "supervision",
-                rules=[f.rule_id for f in event.findings],
-                detail="; ".join(f.detail for f in event.findings) or str(event.action),
-            ))
-
-        if t >= sweep_due:
-            sweep_due = t + live.config.scan.interval_s
-            await _sweep(live, scanner, t)
-
-        state = plc.tank.state
-        live.emit(ev.tank_state(
-            t,
-            level_m=state.level_m,
-            reported_m=_reported_level(plc),
-            believed_m=guard.estimator.state.level_m,
-            pump_pct=state.pump_pos_pct,
-            valve_pct=state.valve_pos_pct,
-            limit_m=live.config.safety.level_max_m,
-            floor_m=live.config.safety.level_min_m,
-            height_m=live.config.plant.height_m,
-            overflowed=state.overflowed,
-            dried_out=state.dried_out,
-        ))
-        await asyncio.sleep(_FRAME_S)
 
 
 # ----------------------------------------------------------------------
@@ -442,22 +255,18 @@ async def main_async(args: argparse.Namespace) -> int:
         if server is not None and not view.tty:
             print(f"live view at {server.url}")
         live = Live(config, bus, view)
-        if args.site == "tank":
-            results["tank"] = await tank_scenario(live, args.attack, args.duration)
-        else:
-            # Two runs of the one site: the guard told which measurements are
-            # still arriving, and the same site with the guard not told. That
-            # is one scenario with its own control, not two sites sharing a
-            # command.
-            results["site_informed"] = await site_scenario(live, inform_guard=True,
-                                                           speed=args.speed)
-            await asyncio.sleep(args.pause)
-            results["site_control"] = await site_scenario(live, inform_guard=False,
-                                                          speed=args.speed)
+        # Two runs of the one site: the guard told which measurements are still
+        # arriving, and the same site with the guard not told. That is one
+        # scenario with its own control, not two sites sharing a command.
+        results["site_informed"] = await site_scenario(live, inform_guard=True,
+                                                       speed=args.speed)
+        await asyncio.sleep(args.pause)
+        results["site_control"] = await site_scenario(live, inform_guard=False,
+                                                      speed=args.speed)
 
     if server is not None:
         if args.hold:
-            print(f"\nholding the live view open at {server.url} — ctrl-c to stop")
+            print(f"\nholding the live view open at {server.url}, ctrl-c to stop")
             with contextlib.suppress(asyncio.CancelledError, KeyboardInterrupt):
                 await asyncio.sleep(args.hold)
         await server.stop()
@@ -470,11 +279,6 @@ def _summarise(results: dict[str, dict]) -> None:
     if not results:
         return
     print()
-    tank = results.get("tank")
-    if tank:
-        print(f"tank: {'damaged' if tank['damaged'] else 'intact'} at "
-              f"{tank['level_m']:.3f} m, {tank['blocked']} writes blocked, "
-              f"{tank['trips']} trips")
     informed, control = results.get("site_informed"), results.get("site_control")
     if informed and control:
         print()
@@ -495,11 +299,8 @@ def _summarise(results: dict[str, dict]) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("site", choices=("tank", "battery"),
-                        help="which site to run; one per invocation, never both")
-    parser.add_argument("--attack", choices=ATTACKS, default="overflow")
-    parser.add_argument("--duration", type=float, default=30.0,
-                        help="seconds to hold the tank attack (it needs ~20 to do damage)")
+    parser.add_argument("site", choices=("battery",), default="battery", nargs="?",
+                        help="which site to run, one per invocation, never both")
     parser.add_argument("--speed", type=float, default=10.0,
                         help="how much faster than real time the site scenario runs")
     parser.add_argument("--pause", type=float, default=2.0,

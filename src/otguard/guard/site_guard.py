@@ -1,10 +1,10 @@
-"""``SiteGuard`` — the bump-in-the-wire decision engine for a storage site.
+"""``SiteGuard``, the bump-in-the-wire decision engine for a storage site.
 
 Same shape as the treatment works' guard, and deliberately so:
 ``observe`` for telemetry flowing back, ``check`` for commands heading in,
-protocol-agnostic in between. What differs is what it has to keep track of —
-sixteen units instead of one actuator pair, three power measurements instead of
-one level transmitter, and a switchyard.
+protocol-agnostic in between. What differs is what it has to keep track of,
+which here is sixteen units instead of one actuator pair, three power
+measurements instead of one level transmitter, and a switchyard.
 
 The ordering inside ``observe`` matters and is worth stating, because getting it
 wrong produces a guard that looks like it works:
@@ -14,7 +14,7 @@ wrong produces a guard that looks like it works:
    :meth:`SourceVoter.trusted_power_mw`, so a meter that has been caught lying
    is out of the picture by the time the rules run.
 2. **Then update the per-unit estimators**, driven by accepted commands and
-   corrected — weakly — by what each unit reports about itself.
+   corrected, weakly, by what each unit reports about itself.
 3. **Then supervise.** Re-check the standing orders against the envelope. This
    is what catches the attack that sends one legal command and waits, which the
    tank version found the hard way was invisible to a command-time-only guard.
@@ -68,7 +68,7 @@ class SiteProtectiveAction:
             bits.append(f"restore cooling on {', '.join(self.cooling_on)}")
         if self.open_breaker:
             bits.append("open main breaker")
-        return f"TRIP t={self.t:7.2f}s {'; '.join(bits)}  <- {self.reason}"
+        return f"TRIP t={self.t:7.2f}s {'. '.join(bits)}  <- {self.reason}"
 
 
 @dataclass
@@ -107,7 +107,7 @@ class SiteVerdict:
         head = f"{self.decision.value.upper():5s} {self.command}"
         if not self.findings:
             return head
-        return head + "  <- " + "; ".join(str(f) for f in self.findings)
+        return head + "  <- " + ". ".join(str(f) for f in self.findings)
 
 
 @dataclass
@@ -211,7 +211,7 @@ class SiteGuard:
         not import it: the dependency runs one way, so the guard can be tested
         against a hand-written set and the scanner can be tested without a
         guard. Connecting the two is the runner's job, and *not* connecting
-        them is the ablation — a guard nobody calls this on counts all three
+        them is the ablation, a guard nobody calls this on counts all three
         sources, exactly as it did before the scanner existed.
 
         The consequence is in :meth:`SourceVoter.set_counted`: a source that
@@ -275,8 +275,8 @@ class SiteGuard:
         # on change, so after the morning ramp there may be no traffic for
         # minutes, and a spoof detected at 60 s would go unreported until
         # something unrelated was written. That is the same hole the tank
-        # version found — a command-time-only guard is defeated by sending one
-        # legal command and waiting — so a newly latched alarm raises an event
+        # version found, a command-time-only guard is defeated by sending one
+        # legal command and waiting, so a newly latched alarm raises an event
         # on its own.
         for device, est in self.estimators.items():
             if est.estimate.integrity_alarm and device not in self._reported_energy_alarms:
@@ -320,7 +320,7 @@ class SiteGuard:
                 RuleFinding(
                     "B6",
                     "quorum",
-                    f"{', '.join(s.label for s in missing)} stopped being refreshed; "
+                    f"{', '.join(s.label for s in missing)} stopped being refreshed, "
                     f"{consequence}",
                     margin=float(len(MeasurementSource) - len(counted)),
                 )
@@ -338,7 +338,7 @@ class SiteGuard:
                     "B3",
                     "supervision",
                     f"interconnection at {self.site_power_mw:.2f} MW against a "
-                    f"{rating:.1f} MW rating on the measurements still trusted; "
+                    f"{rating:.1f} MW rating on the measurements still trusted, "
                     f"curtailing the fleet to {self.poi_limit_mw:.1f} MW",
                     margin=abs(self.site_power_mw) - rating,
                 )
@@ -377,7 +377,7 @@ class SiteGuard:
                 t=observation.t,
                 pack_power_mw=curtail,
                 cooling_on=tuple(restore_cooling),
-                reason="; ".join(f.detail for f in findings),
+                reason=". ".join(f.detail for f in findings),
             )
             self._last_trip_t[direction] = observation.t
             for device, value in curtail.items():

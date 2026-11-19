@@ -1,7 +1,7 @@
 """Configuration loading.
 
 The strictness test matters more than it looks. A silently ignored typo in the
-YAML — ``max_reversal`` for ``max_reversals`` — leaves a rule running on its
+YAML, ``max_reversal`` for ``max_reversals``, leaves a rule running on its
 default while the report claims it was tuned, and the resulting numbers are
 wrong in the flattering direction.
 """

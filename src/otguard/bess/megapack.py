@@ -10,7 +10,7 @@ compromise changes the arithmetic. (Rule B2.)
 
 *Capability is state-dependent.* A unit near empty cannot discharge at full
 power and a hot unit cannot run at full power in either direction. The limit is
-not a configured number an attacker can raise — it is what the cells will do.
+not a configured number an attacker can raise, it is what the cells will do.
 (Rule B1.)
 
 *Heat follows current, and cooling is slow.* Losses go as the square of power
@@ -98,7 +98,7 @@ class Megapack:
         """Largest import the unit can accept, as a positive magnitude.
 
         Falls off above ``soc_derate_high`` (constant-voltage taper near full)
-        and below ``temp_cold_c`` — charging a cold lithium cell at full rate
+        and below ``temp_cold_c``, charging a cold lithium cell at full rate
         plates lithium metal, so the limit tightens in the cold as well as the
         heat, which is why this is not a mirror image of the discharge curve.
         """
@@ -169,7 +169,7 @@ class Megapack:
         Order matters: the inverter first clamps the command to what the unit can
         physically do, *then* the energy and thermal states integrate the power
         that actually flowed. An attacker who commands 3 MW from a unit rated
-        1.9 MW does not get 3 MW — they get the clamp, plus the heat. Modelling
+        1.9 MW does not get 3 MW, they get the clamp, plus the heat. Modelling
         it the other way round would let a rejected command do damage and would
         flatter the guard.
         """

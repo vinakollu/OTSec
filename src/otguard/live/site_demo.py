@@ -1,7 +1,7 @@
 """The storage site running live, with somebody able to interfere with it.
 
 The same shape as :mod:`otguard.live.water_demo`, against a plant with a
-different argument. The works is about a quantity nobody measures; this site is
+different argument. The works is about a quantity nobody measures. This site is
 about a quantity three people measure and what happens when two of them stop
 telling the truth, or stop talking at all.
 
@@ -67,7 +67,7 @@ class Attack:
     source: str                 # which device it comes from
     zone: str
     conduit: str = "scada_to_control"
-    #: (delay_s, command kind, value, device) — device "" means site-wide,
+    #: (delay_s, command kind, value, device), device "" means site-wide,
     #: "*" means every unit.
     steps: tuple[tuple[float, K, float, str], ...] = ()
     hold_s: float = 240.0
@@ -666,7 +666,7 @@ class SiteDemo:
 
         This is the site's best result and the easiest one to miss, because
         nothing on the plant moves when it happens. Three instruments measure
-        the same power by three different routes; when one drifts away from
+        the same power by three different routes. When one drifts away from
         the other two, the guard can say which one rather than only that
         something is wrong. The number worth reading is how far the lie had
         got by then.

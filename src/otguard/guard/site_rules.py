@@ -8,7 +8,7 @@ they do because of specific mistakes the tank version made and documented:
 *The counterfactual test (B3, B5).* R3's lesson was that "does this command's
 predicted trajectory violate the limit?" rejects the corrective command too,
 because once a process is already heading out of bounds every trajectory looks
-bad — including the one that saves it. A guard that blocks the recovery action
+bad, including the one that saves it. A guard that blocks the recovery action
 is worse than no guard at the moment it matters most. So B3 and B5 object only
 when the candidate command is *strictly worse than continuing what is already
 being done*.
@@ -88,7 +88,7 @@ class SiteRule(Protocol):
 
 
 # ----------------------------------------------------------------------
-# B1 — inverter capability envelope
+# B1, inverter capability envelope
 # ----------------------------------------------------------------------
 
 
@@ -97,7 +97,7 @@ class CapabilityRule:
 
     The limit is not a configured number. It is the product of the SoC taper,
     the thermal derate and the inverter's apparent-power circle, all of which
-    move as the plant runs. Commanding through it does not produce more power —
+    move as the plant runs. Commanding through it does not produce more power,
     it produces a clamped inverter, heat, and on real equipment a fault trip.
 
     Note what this rule does *not* do: it does not consult a configured maximum
@@ -166,14 +166,14 @@ def _capability_mw(model, soc: float, temp_c: float, discharging: bool) -> float
 
 
 # ----------------------------------------------------------------------
-# B2 — energy conservation
+# B2, energy conservation
 # ----------------------------------------------------------------------
 
 
 class EnergyRule:
     """Raise the estimator's standing objection to a unit that is lying.
 
-    The detection happens continuously in :class:`PackEstimator`; this rule is
+    The detection happens continuously in :class:`PackEstimator`. This rule is
     how that latched state reaches a command decision. A unit whose reported SoC
     has stopped matching its own energy balance is not a unit whose set-points
     should be honoured, because every other rule's view of its capability is
@@ -198,7 +198,7 @@ class EnergyRule:
 
 
 # ----------------------------------------------------------------------
-# B3 — site power balance and the export limit
+# B3, site power balance and the export limit
 # ----------------------------------------------------------------------
 
 
@@ -208,13 +208,13 @@ class BalanceRule:
     Two separate objections, and the second is the one that matters:
 
     *Absolute.* The commanded aggregate would put the POI beyond the
-    transformer's rating. This is checked against ``poi_rating_mw`` — the
-    nameplate — and not against the writable ``poi_limit_mw``, so raising the
+    transformer's rating. This is checked against ``poi_rating_mw``, the
+    nameplate, and not against the writable ``poi_limit_mw``, so raising the
     limit through the REST API does not buy the attacker anything.
 
     *Incremental.* The aggregate is already over the contractual limit and this
-    command makes it worse. Phrased as the counterfactual — strictly worse than
-    holding — so that a command *reducing* an existing excursion is allowed
+    command makes it worse. Phrased as the counterfactual, strictly worse than
+    holding, so that a command *reducing* an existing excursion is allowed
     through. Without that, the guard blocks the operator's own attempt to fix
     the problem, which is exactly the failure the tank version's R3 was rewritten
     to avoid.
@@ -291,24 +291,24 @@ def _poi_from_bus(p_bus_mw: float, site: SiteConfig) -> float:
 
 
 # ----------------------------------------------------------------------
-# B4 — ramp, with the frequency exemption
+# B4, ramp, with the frequency exemption
 # ----------------------------------------------------------------------
 
 
 class RampRule:
-    """Limit how fast the site changes output — unless the grid asked it to.
+    """Limit how fast the site changes output, unless the grid asked it to.
 
     A battery slamming from full charge to full discharge stresses the
     transformer and violates the interconnection agreement. But that same slam
     is precisely the correct, contracted behaviour during a frequency
-    excursion — it is what fast frequency response *is*, and a guard that blocks
+    excursion, it is what fast frequency response *is*, and a guard that blocks
     it has broken the site's primary revenue service and its obligation to the
     grid.
 
     So the rule is not a threshold on ramp rate. It is a threshold conditioned on
     grid frequency: outside the normal band the allowance opens up by
     ``event_multiplier``. This is the clearest case in the project of physics
-    supplying *context* rather than a limit — the same command is plausible or
+    supplying *context* rather than a limit, the same command is plausible or
     not depending on a measurement the attacker does not control.
 
     An attacker who wants the fast ramp must therefore also fake a frequency
@@ -360,7 +360,7 @@ class RampRule:
 
 
 # ----------------------------------------------------------------------
-# B5 — thermal lookahead
+# B5, thermal lookahead
 # ----------------------------------------------------------------------
 
 
@@ -484,19 +484,19 @@ def _project_temp(est: PackEstimator, horizon_s: float, p_mw: float, cooling: bo
 
 
 # ----------------------------------------------------------------------
-# B6 — cross-source agreement
+# B6, cross-source agreement
 # ----------------------------------------------------------------------
 
 
 class CrossSourceRule:
     """Surface the voter's standing objection about a lying measurement.
 
-    Like B2 this rule does not do the detection — :class:`SourceVoter` does,
-    continuously — it carries the latched result into command decisions.
+    Like B2 this rule does not do the detection, :class:`SourceVoter` does,
+    continuously, it carries the latched result into command decisions.
 
     Enforcement is ``alarm`` rather than ``block`` by default and that is a
     deliberate call. Knowing the revenue meter is lying does not by itself make
-    any particular set-point wrong; what it does is tell the rest of the guard
+    any particular set-point wrong. What it does is tell the rest of the guard
     which number to believe, which it does through
     :meth:`SourceVoter.trusted_power_mw`. Blocking every command because a
     meter is suspect would take the site offline over an instrument fault.
@@ -519,7 +519,7 @@ class CrossSourceRule:
 
 
 # ----------------------------------------------------------------------
-# B7 — switchgear interlocks
+# B7, switchgear interlocks
 # ----------------------------------------------------------------------
 
 
@@ -533,8 +533,8 @@ class InterlockRule:
     exists for, and it is one of the few OT actions with no recovery.
 
     *Latched lockout.* After a protective trip the breaker stays out until a
-    human clears it. A trip the HMI can immediately undo is not a protection —
-    the tank version learned this as R5 — so the latch holds against the
+    human clears it. A trip the HMI can immediately undo is not a protection,
+    the tank version learned this as R5, so the latch holds against the
     direction that tripped and is cleared only by
     :meth:`SiteGuard.acknowledge`.
 
@@ -584,7 +584,7 @@ class InterlockRule:
 
 
 # ----------------------------------------------------------------------
-# B8 — provenance (not a physics rule)
+# B8, provenance (not a physics rule)
 # ----------------------------------------------------------------------
 
 
@@ -615,7 +615,7 @@ class ProvenanceRule:
         # A conduit describes traffic *between* zones. The site controller
         # dispatching from within the control zone does not cross one, and
         # demanding a conduit for it would flag the site's own normal operation
-        # — the single largest source of benign traffic there is.
+        #, the single largest source of benign traffic there is.
         if command.zone in cfg.control_zones:
             return None
 
