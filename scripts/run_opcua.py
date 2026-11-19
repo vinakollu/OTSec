@@ -3,7 +3,7 @@
 
     python scripts/run_opcua.py
     python scripts/run_opcua.py --modes None SignAndEncrypt
-    python scripts/run_opcua.py --scenarios none overflow setpoint_jump
+    python scripts/run_opcua.py --scenarios none export_over_limit limit_tamper
 
 Each cell runs a real OPC UA session over a loopback socket, through the guard,
 with a secure-channel handshake per episode. The full set is forty-two episodes

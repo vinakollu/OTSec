@@ -1,10 +1,15 @@
-"""A simulated field device that speaks OPC UA, with the tank behind it.
+"""A simulated field device that speaks OPC UA, with the storage site behind it.
 
-The same shape as :class:`~otguard.modbus.plc_server.SimulatedPLC`: a server
-answering requests, and a scan loop that latches the commanded actuator
-positions, advances the plant, and publishes the measurements back. The device
+A server answering requests, and a scan loop that latches the commanded
+set-points, advances the site, and publishes the measurements back. The device
 has no notion of a safety envelope and obeys any value of the right type, which
 is the premise of the whole project rather than an omission.
+
+The site controller's own sharing of a fleet set-point across the units that
+are online lives here rather than in the guard, because that is where it lives
+on a real site. The guard sees one write of one number and has to work out
+what that number does to thirty megawatts of battery, which is the position a
+bump-in-the-wire is actually in.
 
 What changes against the Modbus version is the security configuration, and that
 is the only reason this exists. A Modbus device has none, so a guard in front of
@@ -27,10 +32,10 @@ import logging
 
 from ..clock import SimClock
 from ..config import Config
-from ..sim import WaterTank
+from ..bess.site import BessSite
 from .certs import CertSet
 from .framing import SecurityMode
-from .nodes import ENDPOINT_PATH, NAMESPACE_URI, TANK_POINTS, NodeMap
+from .nodes import ENDPOINT_PATH, NAMESPACE_URI, SITE_POINTS, NodeMap
 
 log = logging.getLogger(__name__)
 
@@ -42,7 +47,7 @@ def endpoint_url(host: str, port: int) -> str:
 
 
 class SimulatedOpcUaDevice:
-    """OPC UA server whose nodes are backed by the tank simulation."""
+    """OPC UA server whose nodes are backed by the storage site simulation."""
 
     def __init__(
         self,
@@ -53,7 +58,7 @@ class SimulatedOpcUaDevice:
         certs: CertSet | None = None,
         seed: int = 0,
         clock: SimClock | None = None,
-        initial_level_m: float | None = None,
+        initial_dispatch_mw: float = 0.0,
     ) -> None:
         self.config = config
         self.host = host
@@ -61,19 +66,20 @@ class SimulatedOpcUaDevice:
         self.mode = mode
         self.certs = certs
         self.clock = clock or SimClock()
-        self.tank = WaterTank(config.plant, config.safety, seed=seed)
-        if initial_level_m is not None:
-            self.tank.state.level_m = initial_level_m
+        b = config.bess
+        self.site = BessSite(b.site, b.safety, b.pack, seed=seed)
+        self.initial_dispatch_mw = initial_dispatch_mw
         self.map = NodeMap()
         self.writes_latched = 0
-        self.peak_level_m = self.tank.state.level_m
-        self.min_level_m = self.tank.state.level_m
+        self.peak_poi_mw = self.site.state.p_poi_mw
+        self.min_poi_mw = self.site.state.p_poi_mw
+        self.peak_mva = 0.0
 
         self._server = None
         self._nodes: dict[str, object] = {}
         self._scan_task: asyncio.Task | None = None
         self._plant_t = 0.0
-        self._max_pump_pct = 100.0
+        self._ramp_limit = b.site.ramp_limit_mw_s
         #: Simulated time after which the plant stops advancing.
         #:
         #: The episode's clock is shared with the clients and the guard, and it
@@ -93,7 +99,7 @@ class SimulatedOpcUaDevice:
         server = Server()
         await server.init()
         server.set_endpoint(endpoint_url(self.host, self.port))
-        server.set_server_name("OTGuard tank device")
+        server.set_server_name("OTGuard storage site")
 
         if self.mode is SecurityMode.NONE:
             server.set_security_policy([ua.SecurityPolicyType.NoSecurity])
@@ -114,15 +120,18 @@ class SimulatedOpcUaDevice:
 
         index = await server.register_namespace(NAMESPACE_URI)
         if index != self.map.namespace_index:
-            self.map = NodeMap(TANK_POINTS, namespace_index=index)
+            self.map = NodeMap(SITE_POINTS, namespace_index=index)
         folder = await server.nodes.objects.add_object(
-            ua.NodeId("Tank", index), "Tank"
+            ua.NodeId("Site", index), "Site"
         )
-        for point in TANK_POINTS:
+        for point in SITE_POINTS:
+            initial = point.initial
+            if point.identifier == "Site.DispatchSetpoint":
+                initial = self.initial_dispatch_mw
             node = await folder.add_variable(
                 ua.NodeId(point.identifier, index),
                 point.browse_name,
-                ua.Variant(float(point.initial), ua.VariantType.Double),
+                ua.Variant(float(initial), ua.VariantType.Double),
             )
             if point.writable:
                 await node.set_writable()
@@ -134,31 +143,47 @@ class SimulatedOpcUaDevice:
     # ------------------------------------------------------------------
     async def _latch(self) -> None:
         """Read the command nodes, apply them, publish the measurements."""
-        pump = float(await self._nodes["Tank.PumpCommand"].read_value())
-        valve = float(await self._nodes["Tank.ValveCommand"].read_value())
-        self._max_pump_pct = float(await self._nodes["Tank.PumpMaxSpeed"].read_value())
-        # The parameter is what a speed command is a fraction *of*, so raising
-        # it changes what every subsequent pump command means. The device obeys
-        # it without comment, which is the whole point of having it here.
-        self.tank.set_pump(pump * self._max_pump_pct / 100.0)
-        self.tank.set_valve(valve)
+        dispatch = float(await self._nodes["Site.DispatchSetpoint"].read_value())
+        limit = float(await self._nodes["Site.ExportLimit"].read_value())
+        breaker = float(await self._nodes["Site.Breaker"].read_value())
+        # The parameter is what a dispatch is allowed to move *through*, so
+        # raising it changes what every subsequent set-point does to the site.
+        # The device obeys it without comment, which is the point of having it.
+        self._ramp_limit = max(0.01, float(
+            await self._nodes["Site.RampLimit"].read_value()))
+        self.site.poi_limit_mw = limit
+        self.site.ramp_limit_mw_s = self._ramp_limit
+        self.site.set_breaker(breaker >= 0.5)
+        # A fleet set-point is shared across whatever is online. That sharing
+        # is the site controller's job on a real site, so it belongs to the
+        # device rather than to the guard watching it.
+        online = [u for u in self.site.packs if u.state.online]
+        if online:
+            share = dispatch / len(online)
+            for unit in online:
+                unit.set_power(share)
         self.writes_latched += 1
 
     async def _publish(self) -> None:
         from asyncua import ua
 
-        state = self.tank.state
+        state = self.site.state
+        packs = list(self.site.packs)
+        socs = [u.state.soc for u in packs] or [0.0]
+        temps = [u.state.temp_c for u in packs] or [0.0]
+        mva = (state.p_poi_mw ** 2 + state.q_site_mvar ** 2) ** 0.5
         for identifier, value in (
-            ("Tank.Level", self.tank.measure()),
-            ("Tank.PumpFeedback", state.pump_pos_pct),
-            ("Tank.ValveFeedback", state.valve_pos_pct),
+            ("Site.PoiPowerMw", self.site.observe(self.clock.now()).poi_meter_mw),
+            ("Site.FleetSoc", 100.0 * sum(socs) / len(socs)),
+            ("Site.HottestTempC", max(temps)),
+            ("Site.TransformerMva", mva),
         ):
             await self._nodes[identifier].write_value(
                 ua.DataValue(ua.Variant(float(value), ua.VariantType.Double))
             )
 
     async def _run_scan_loop(self) -> None:
-        dt = self.config.plant.dt_s
+        dt = self.config.bess.site.dt_s
         self._plant_t = self.clock.now()
         try:
             while True:
@@ -168,11 +193,15 @@ class SimulatedOpcUaDevice:
                 steps = 0
                 while self._plant_t + dt <= target and steps < _MAX_CATCHUP_STEPS:
                     await self._latch()
-                    self.tank.step(dt)
+                    self.site.step(dt, self._plant_t)
                     self._plant_t += dt
                     steps += 1
-                    self.peak_level_m = max(self.peak_level_m, self.tank.state.level_m)
-                    self.min_level_m = min(self.min_level_m, self.tank.state.level_m)
+                    s = self.site.state
+                    self.peak_poi_mw = max(self.peak_poi_mw, s.p_poi_mw)
+                    self.min_poi_mw = min(self.min_poi_mw, s.p_poi_mw)
+                    self.peak_mva = max(
+                        self.peak_mva,
+                        (s.p_poi_mw ** 2 + s.q_site_mvar ** 2) ** 0.5)
                 await self._publish()
                 await self.clock.sleep(dt)
         except asyncio.CancelledError:
@@ -190,7 +219,11 @@ class SimulatedOpcUaDevice:
 
     @property
     def damaged(self) -> bool:
-        return self.tank.state.overflowed or self.tank.state.dried_out
+        return self.site.damaged
+
+    @property
+    def damage_summary(self) -> list[str]:
+        return sorted(self.site.damage_summary())
 
     async def start(self) -> None:
         await self._build()

@@ -75,7 +75,7 @@ helps, and saying otherwise would overstate the result.
 
 ## 3. The process
 
-A single water tank — the simplest process that still has the property the whole
+A storage site and a treatment works — two processes that have the property the whole
 design rests on: **inertia**. The level cannot jump. Whatever an attacker writes,
 the tank still fills and drains at a rate set by geometry and gravity.
 

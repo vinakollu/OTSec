@@ -17,8 +17,7 @@ from otguard.bess.site import BessSite
 from otguard.bess.types import MeasurementSource
 from otguard.config import ScanConfig, load_config
 from otguard.guard.site_guard import SiteGuard
-from otguard.modbus import SimulatedPLC
-from otguard.modbus.registers import IR_LEVEL
+from otguard.modbus.protocol import decode_frame, encode_frame
 from otguard.scan import (
     CallbackProbe,
     Evidence,
@@ -28,21 +27,44 @@ from otguard.scan import (
     Scanner,
     TcpProbe,
     site_targets,
-    tank_targets,
 )
 
 
 # ----------------------------------------------------------------------
 # Probes
 # ----------------------------------------------------------------------
-def test_modbus_probe_reads_a_register_off_a_real_plc(config):
-    async def scenario():
-        plc = SimulatedPLC(config, port=0)
-        await plc.start()
+async def _one_shot_modbus_server(reply: bool = True):
+    """The smallest thing that answers a Modbus read.
+
+    The probe's whole claim is that something on the far end understood a
+    Modbus request and answered it, as distinct from a socket that merely
+    accepted a connection. Testing that needs a real server speaking the real
+    framing, and it does not need a plant behind it: what the register
+    contains is exactly what a liveness probe does not care about.
+    """
+    async def handle(reader, writer):
         try:
-            return await ModbusProbe("127.0.0.1", plc.port, address=IR_LEVEL)()
+            buffer = await reader.read(512)
+            frame, _ = decode_frame(buffer)
+            if frame is not None and reply:
+                # Function 4, one register, value 1234.
+                pdu = bytes([0x04, 0x02]) + (1234).to_bytes(2, "big")
+                writer.write(encode_frame(frame.transaction_id, frame.unit_id, pdu))
+                await writer.drain()
         finally:
-            await plc.stop()
+            writer.close()
+    return await asyncio.start_server(handle, "127.0.0.1", 0)
+
+
+def test_modbus_probe_reads_a_register_off_something_that_answers(config):
+    async def scenario():
+        server = await _one_shot_modbus_server()
+        port = server.sockets[0].getsockname()[1]
+        try:
+            return await ModbusProbe("127.0.0.1", port)()
+        finally:
+            server.close()
+            await server.wait_closed()
 
     result = asyncio.run(scenario())
     assert result.reachable
@@ -178,25 +200,6 @@ def test_duplicate_device_names_are_refused():
     scanner = Scanner(targets=[ScanTarget(name="dev", probe=CallbackProbe(lambda: True))])
     with pytest.raises(ValueError, match="already being scanned"):
         scanner.add(ScanTarget(name="dev", probe=CallbackProbe(lambda: True)))
-
-
-def test_tank_targets_probe_the_controller_over_a_real_socket(config):
-    async def scenario():
-        plc = SimulatedPLC(config, port=0)
-        await plc.start()
-        try:
-            scanner = Scanner(
-                ScanConfig(ok_threshold=1), targets=tank_targets(plc_port=plc.port)
-            )
-            await scanner.scan_once()
-            return scanner.status("plc01")
-        finally:
-            await plc.stop()
-
-    status = asyncio.run(scenario())
-    assert status.state is Reachability.UP
-    assert status.target.critical
-    assert status.target.networked, "the tank stack is sensed over real sockets"
 
 
 # ----------------------------------------------------------------------

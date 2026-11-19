@@ -23,9 +23,8 @@ from __future__ import annotations
 
 from ..bess.site import BessSite
 from ..bess.types import MeasurementSource
-from ..modbus.registers import IR_LEVEL
 from ..site.topology import Role, SiteTopology, default_site_topology
-from .probe import CallbackProbe, Evidence, ModbusProbe
+from .probe import CallbackProbe, Evidence
 from .scanner import ScanTarget
 
 #: Which measurement each of the three independent power readings comes in on.
@@ -70,52 +69,6 @@ class ModelledNetwork:
     @property
     def severed(self) -> frozenset[str]:
         return frozenset(self._down)
-
-
-def tank_targets(
-    *,
-    plc_host: str = "127.0.0.1",
-    plc_port: int,
-    proxy_host: str = "127.0.0.1",
-    proxy_port: int | None = None,
-    timeout_s: float = 1.0,
-) -> list[ScanTarget]:
-    """The water-tank stack: the controller, and the guard in front of it.
-
-    Both are probed by reading the level input register rather than by opening
-    a socket, because the failure worth catching is a controller whose port
-    still accepts while its scan loop has stopped. The two probes answer
-    different questions: the controller's says the controller is alive, and the
-    guard's says the whole path through the guard to the controller is. A guard
-    that is up in front of a controller that is not shows as one row up and one
-    row down, which is the picture an engineer needs.
-    """
-    targets = [
-        ScanTarget(
-            name="plc01",
-            probe=ModbusProbe(plc_host, plc_port, address=IR_LEVEL, timeout_s=timeout_s),
-            role="controller",
-            zone="control",
-            protocol="modbus_tcp",
-            address=f"{plc_host}:{plc_port}",
-            critical=True,
-        )
-    ]
-    if proxy_port is not None:
-        targets.append(
-            ScanTarget(
-                name="guard01",
-                probe=ModbusProbe(
-                    proxy_host, proxy_port, address=IR_LEVEL, timeout_s=timeout_s
-                ),
-                role="guard",
-                zone="control",
-                protocol="modbus_tcp",
-                address=f"{proxy_host}:{proxy_port}",
-                critical=True,
-            )
-        )
-    return targets
 
 
 def site_targets(

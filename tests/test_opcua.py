@@ -19,8 +19,8 @@ import struct
 
 import pytest
 
-from otguard.guard.types import CommandKind
-from otguard.modbus.devicemap import PointRole
+from otguard.bess.types import SiteCommandKind
+from otguard.guard.wire import PointRole
 from otguard.opcua.framing import (
     BODY_OFFSET,
     LEGIBLE_PREFIX_LEN,
@@ -30,7 +30,7 @@ from otguard.opcua.framing import (
     Visibility,
     frame,
 )
-from otguard.opcua.nodes import TANK_POINTS, NodeMap
+from otguard.opcua.nodes import SITE_POINTS, NodeMap
 
 
 def _msg(kind: bytes = b"MSG", chunk: bytes = b"F", channel: int = 7,
@@ -144,31 +144,40 @@ class _FakeNodeId:
 
 
 def test_the_map_resolves_a_configured_point():
-    point = NodeMap().lookup(_FakeNodeId("Tank.PumpCommand"))
+    point = NodeMap().lookup(_FakeNodeId("Site.DispatchSetpoint"))
     assert point is not None
-    assert point.kind is CommandKind.PUMP
+    assert point.kind is SiteCommandKind.SITE_POWER
     assert point.role is PointRole.COMMAND
 
 
 def test_the_map_does_not_recognise_a_node_it_was_not_given():
-    assert NodeMap().lookup(_FakeNodeId("Tank.Mystery")) is None
-    assert NodeMap().lookup(_FakeNodeId("Tank.PumpCommand", namespace=4)) is None
+    assert NodeMap().lookup(_FakeNodeId("Site.Mystery")) is None
+    assert NodeMap().lookup(_FakeNodeId("Site.DispatchSetpoint", namespace=4)) is None
     assert NodeMap().lookup(_FakeNodeId(2600)) is None
 
 
 def test_the_parameter_node_is_not_a_command():
     """It has no physical meaning a rule can predict, so no rule may judge it."""
-    point = NodeMap().lookup(_FakeNodeId("Tank.PumpMaxSpeed"))
+    point = NodeMap().lookup(_FakeNodeId("Site.RampLimit"))
     assert point is not None
     assert point.role is PointRole.PARAMETER
     assert point.kind is None
 
 
-def test_the_actuators_start_shut():
-    """Matching what the guard assumes about a plant it was just inserted into."""
-    for point in TANK_POINTS:
-        if point.kind in (CommandKind.PUMP, CommandKind.VALVE):
-            assert point.initial == 0.0, point.identifier
+def test_the_contract_limit_is_writable_and_that_is_the_point():
+    """The export limit sits in a register an engineer may change.
+
+    That is why an attacker raises it before dispatching against it, and why
+    the rules judge a proposed limit against the transformer rather than
+    against the limit itself. A guard that read this node as its constraint
+    would be checking the attacker's own work.
+    """
+    limit = NodeMap().lookup(_FakeNodeId("Site.ExportLimit"))
+    assert limit is not None and limit.writable
+    assert limit.kind is SiteCommandKind.POI_LIMIT
+    writable = {p.identifier for p in SITE_POINTS if p.writable}
+    assert writable == {"Site.DispatchSetpoint", "Site.ExportLimit",
+                        "Site.Breaker", "Site.RampLimit"}
 
 
 # ----------------------------------------------------------------------
@@ -204,12 +213,12 @@ def test_a_saved_run_round_trips(tmp_path):
 
     def cell(enforced: bool, damaged: bool) -> CellResult:
         out = CellResult(
-            scenario="setpoint_jump", mode=SecurityMode.NONE, enforced=enforced,
+            scenario="limit_tamper", mode=SecurityMode.NONE, enforced=enforced,
             detected=True, first_detection_t=31.5, damaged=damaged,
-            peak_level_m=1.42, min_level_m=0.88, writes_decoded=12,
+            peak_poi_mw=14.2, min_poi_mw=-0.9, peak_mva=14.4, writes_decoded=12,
             writes_blocked=1 if enforced else 0, wire_blocked=0, alarms=2,
             trips=1, blind_trips=0, polls=40, severed_at=None,
-            rules_fired=("R1", "R3"), wire_reasons=("parameter_write",),
+            rules_fired=("B3", "B4"), wire_reasons=("parameter_write",),
             visibility={"msg_total_bytes": 900, "msg_legible_bytes": 900},
             latency_us=[12.0, 18.5],
         )
@@ -230,16 +239,17 @@ def test_a_saved_run_round_trips(tmp_path):
 
 
 def test_the_blind_supervisor_rearms_per_direction(config):
-    """Stopping an overflow sets up a dry-out, and the guard has to see it.
+    """Stopping a runaway export sets up a runaway import, and both count.
 
-    Shutting the pump leaves the outlet open, which is itself a dry-out
-    configuration. The first version of the blind supervisor kept one rearm
-    timestamp for both directions, so the dry-out trip was suppressed for ten
-    seconds and the tank emptied to 0.00 m in the write-flood episode while the
-    guard held a satisfied high-level latch.
+    A site has two ways out of its envelope and the transformer does not care
+    which direction the power is going. The first version of this supervisor
+    kept one rearm timestamp for both, so having tripped on an export it would
+    swallow the next trip on a charge of the same size, and a guard that has
+    already acted once would sit through the opposite excursion holding a
+    satisfied latch.
 
-    ``PhysicsGuard`` already carries a comment explaining why its own rearm is
-    per direction. This is the same mistake made again in a new file.
+    The physics guard carries a comment explaining why its own rearm is per
+    direction. This pins the same mistake against being made again here.
     """
     import asyncio
 
@@ -247,27 +257,26 @@ def test_the_blind_supervisor_rearms_per_direction(config):
 
     proxy = OpcUaGuardProxy(config, SecurityMode.SIGN_AND_ENCRYPT, enforce=True)
 
-    async def feed(t: float, level: float) -> None:
-        proxy._readings.append((t, level))
-        await proxy._blind_supervise(t, level)
+    async def feed(t: float, poi_mw: float) -> None:
+        proxy._readings.append((t, poi_mw))
+        await proxy._blind_supervise(t, poi_mw)
 
     async def run() -> None:
-        for t, level in ((0.0, 1.60), (1.0, 1.70), (2.0, 1.85)):
-            await feed(t, level)
-        assert proxy.stats.blind_trips == 1, "no trip on the rising level"
-        # Falling fast, well inside the ten-second rearm window.
-        for t, level in ((3.0, 1.00), (4.0, 0.40), (5.0, 0.15)):
-            await feed(t, level)
+        for t, poi in ((0.0, 20.0), (1.0, 23.0), (2.0, 26.0)):
+            await feed(t, poi)
+        assert proxy.stats.blind_trips == 1, "no trip on the rising export"
+        # Charging hard the other way, well inside the rearm window.
+        for t, poi in ((3.0, -10.0), (4.0, -22.0), (5.0, -27.0)):
+            await feed(t, poi)
         assert proxy.stats.blind_trips == 2, (
-            "the dry-out trip was swallowed by the high-level rearm timer"
+            "the import trip was swallowed by the export rearm timer"
         )
 
     asyncio.run(run())
-    directions = [
-        ("pump" if e.action.pump_cmd_pct is not None else "valve")
-        for e in proxy.events if e.action is not None
-    ]
-    assert directions == ["pump", "valve"], directions
+    # Both trips are recorded, and the rearm map holds a separate timestamp
+    # for each direction rather than one shared between them.
+    assert len([e for e in proxy.events if e.action is not None]) == 2
+    assert set(proxy._blind_trip_t) == {"high", "low"}
 
 
 def test_the_no_attack_episode_is_not_called_a_miss(config, certs):
@@ -284,13 +293,13 @@ def test_an_unsecured_channel_is_read_judged_and_refused(config, certs):
     """The whole mechanism, end to end, on the mode where all of it works."""
     from otguard.eval.opcua_experiment import run_cell
 
-    cell = _run(run_cell("setpoint_jump", SecurityMode.NONE, config, certs,
+    cell = _run(run_cell("limit_tamper", SecurityMode.NONE, config, certs,
                          enforce=True, duration_s=60.0, speed=40.0))
     assert not cell.error, cell.error
     assert cell.writes_decoded > 0, "nothing was read off the wire"
     assert cell.writes_blocked >= 1, "the out-of-range set-point was not refused"
     assert cell.attack.accepted == 0
-    assert "R1" in cell.rules_fired
+    assert "B3" in cell.rules_fired
     # The session has to survive the refusal, or the refusal is a disconnection.
     assert cell.severed_at is None
     assert cell.honest.accepted > 0
@@ -300,7 +309,7 @@ def test_an_encrypted_channel_leaves_the_command_guard_nothing(config, certs):
     """The claim the experiment exists to make, measured rather than argued."""
     from otguard.eval.opcua_experiment import run_cell
 
-    cell = _run(run_cell("setpoint_jump", SecurityMode.SIGN_AND_ENCRYPT, config, certs,
+    cell = _run(run_cell("limit_tamper", SecurityMode.SIGN_AND_ENCRYPT, config, certs,
                          enforce=True, duration_s=60.0, speed=40.0))
     assert not cell.error, cell.error
     assert cell.writes_decoded == 0
@@ -338,10 +347,10 @@ def test_not_enforcing_still_evaluates_the_rules(config, certs):
     """
     from otguard.eval.opcua_experiment import run_cell
 
-    cell = _run(run_cell("setpoint_jump", SecurityMode.NONE, config, certs,
+    cell = _run(run_cell("limit_tamper", SecurityMode.NONE, config, certs,
                          enforce=False, duration_s=60.0, speed=40.0))
     assert not cell.error, cell.error
     assert cell.detected, "the rules stopped running when enforcement was turned off"
-    assert "R1" in cell.rules_fired
+    assert "B3" in cell.rules_fired
     assert cell.writes_blocked == 0
     assert cell.attack.accepted == 1

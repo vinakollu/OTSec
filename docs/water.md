@@ -202,9 +202,9 @@ whose safety is decided on the reading it is doubting.
 ## What is modelled and what is not
 
 The twenty-two devices, six zones and six conduits are a model of the network,
-not twenty-two listening servers. The tank demonstration
-(`scripts/run_live_demo.py`) is the one that runs real Modbus over real
-sockets, and it is the right place to look for wire-level behaviour.
+not twenty-two listening servers. The OPC UA experiment is the one that runs
+over real sockets with a real secure channel, and the storage site is the one
+it runs against, so that is the place to look for wire-level behaviour.
 
 What is not modelled is the guard. Every verdict on the page is the rule set
 reaching a decision about the water the simulation is actually moving, over the

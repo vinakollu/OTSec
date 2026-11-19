@@ -29,7 +29,6 @@ import logging
 from typing import Awaitable, Callable, Iterable
 
 from .bus import EventBus
-from .page import PAGE
 
 log = logging.getLogger(__name__)
 
@@ -46,6 +45,18 @@ _HEAD = (
     "{extra}"
     "\r\n"
 )
+
+
+#: What a server started without a page serves. It is not an error: the event
+#: stream is still there and a terminal view may be the only thing watching.
+_NO_PAGE = """<!doctype html><html><head><meta charset="utf-8">
+<title>OTGuard</title></head><body style="font:16px system-ui;padding:3rem">
+<h1>OTGuard</h1><p>This server is streaming events but was not given a page to
+draw them with. Start a plant with its own command:</p>
+<pre>python scripts/run_water.py    the treatment works
+python scripts/run_site.py     the storage site</pre>
+<p>The raw stream is at <code>/events</code>.</p></body></html>
+"""
 
 
 class LiveServer:
@@ -66,7 +77,7 @@ class LiveServer:
         # second view be served by the same machinery, and ``on_command`` opens
         # the one route that lets a page drive the run rather than only watch
         # it. A server with neither behaves exactly as before.
-        self.page = page if page is not None else PAGE
+        self.page = page if page is not None else _NO_PAGE
         self.on_command = on_command
         self._server: asyncio.AbstractServer | None = None
         self.clients = 0

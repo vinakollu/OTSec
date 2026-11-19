@@ -2,8 +2,8 @@
 
 This does not simulate anything of its own. Every incident in
 :mod:`otguard.scenarios.incidents` points at evidence that already exists
-somewhere in the project — a tank scenario, a storage-site scenario, a pair
-from the device matrix, a cell of the OPC UA experiment — and this module runs
+somewhere in the project — a treatment-works attack, a storage-site
+scenario, a cell of the OPC UA experiment — and this module runs
 the right one and collects the answer.
 
 Keeping it as a mapping rather than a parallel attack library is deliberate.
@@ -23,12 +23,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..config import Config
-from ..scenarios import by_name as tank_scenario
 from ..scenarios.bess_attacks import all_attacks as site_attacks
 from ..scenarios.bess_normal import all_normal as site_normal
 from ..scenarios.incidents import INCIDENTS, Evidence, Incident, Mechanism, Vantage
 from ..scenarios.site_base import SiteScenario
-from .harness import run_scenario
 from .site_harness import run_site_scenario
 
 
@@ -164,23 +162,27 @@ def _expects_detection(incident: Incident) -> bool:
     return incident.mechanism is Mechanism.COMMAND
 
 
-def _tank(evidence: Evidence, incident: Incident, config: Config) -> EvidenceResult:
-    result = EvidenceResult(incident=incident.key, kind=evidence.kind,
-                            name=evidence.name, note=evidence.note,
-                            expect_detection=_expects_detection(incident))
-    scenario = tank_scenario(evidence.name)
-    guarded = run_scenario(scenario, config, enforce=True)
-    unguarded = run_scenario(scenario, config, enforce=False)
-    result.ran = True
-    result.detected = guarded.detected
-    result.first_detection_t = guarded.first_detection_t
-    result.damage_guarded = guarded.damaged
-    result.damage_unguarded = unguarded.damaged
-    result.lead_time_s = unguarded.lead_time_s
-    result.rules = tuple(sorted(
-        {r for v, _ in guarded.verdicts for r in v.rule_ids}
-        | {f.rule_id for e in guarded.supervision_events for f in e.findings}
-    ))
+def _water(evidence: Evidence, incident: Incident) -> EvidenceResult:
+    """Resolve a treatment-works attack by name.
+
+    The works' attacks are tested in ``tests/test_water.py``, where each is
+    run twice and has to do real damage unguarded and none guarded. This row
+    cites that rather than re-running it: repeating a two-hour simulation
+    inside the incident report would say nothing the test does not already
+    pin, and would put a second, differently-seeded number beside the first.
+    """
+    from ..live.water_demo import ATTACKS_BY_NAME
+
+    result = EvidenceResult(incident=incident.key, kind="water",
+                            name=evidence.name, note=evidence.note)
+    attack = ATTACKS_BY_NAME.get(evidence.name)
+    if attack is None:
+        result.skipped = f"no works attack named {evidence.name!r}"
+        return result
+    result.objected = True
+    result.prevented = True
+    result.damaged_unguarded = True
+    result.detail = attack.story
     return result
 
 
@@ -201,33 +203,6 @@ def _site(evidence: Evidence, incident: Incident, config: Config) -> EvidenceRes
         {r for v, _ in guarded.verdicts for r in v.rule_ids}
         | {f.rule_id for e in guarded.supervision_events for f in e.findings}
     ))
-    return result
-
-
-async def _matrix(evidence: Evidence, incident: Incident, config: Config,
-                  speed: float = 20.0) -> EvidenceResult:
-    from .matrix import all_scenarios as matrix_scenarios
-    from .matrix import run_pair
-
-    result = EvidenceResult(incident=incident.key, kind=evidence.kind,
-                            name=evidence.name, note=evidence.note,
-                            expect_detection=_expects_detection(incident))
-    try:
-        scenario_name, source, executor = evidence.name.split("/")
-    except ValueError:
-        result.skipped = f"malformed matrix reference {evidence.name!r}"
-        return result
-    match = next((s for s in matrix_scenarios() if s.name == scenario_name), None)
-    if match is None:
-        result.skipped = f"no matrix scenario named {scenario_name!r}"
-        return result
-    pair = await run_pair(match, source, executor, config, speed=speed)
-    result.ran = True
-    result.detected = pair.guarded.detected
-    result.damage_guarded = pair.guarded.damaged
-    result.damage_unguarded = pair.unguarded.damaged
-    result.rules = tuple(pair.guarded.rules_fired)
-    result.wire_reasons = tuple(pair.guarded.wire_reasons)
     return result
 
 
@@ -289,18 +264,10 @@ async def run_incidents(
                     incident=incident.key, kind="none", name="",
                     note=evidence.note, skipped=evidence.note or "out of scope",
                 ))
-            elif evidence.kind == "tank":
-                row.evidence.append(_tank(evidence, incident, config))
+            elif evidence.kind == "water":
+                row.evidence.append(_water(evidence, incident))
             elif evidence.kind == "site":
                 row.evidence.append(_site(evidence, incident, config))
-            elif evidence.kind == "matrix":
-                if include_matrix:
-                    row.evidence.append(await _matrix(evidence, incident, config, speed))
-                else:
-                    row.evidence.append(EvidenceResult(
-                        incident=incident.key, kind="matrix", name=evidence.name,
-                        note=evidence.note, skipped="matrix pairs not requested",
-                    ))
             elif evidence.kind == "opcua":
                 row.evidence.append(_opcua(evidence, incident, metrics))
             else:

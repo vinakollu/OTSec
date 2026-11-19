@@ -25,8 +25,8 @@ A few minutes later the water is on the floor.
 That's the problem in one picture. The dangerous thing wasn't a strange command.
 It was an ordinary command sent at the wrong moment.
 
-Swap the bathtub for a water treatment plant, a chemical reactor, or a power
-station, and the floor is a town.
+Swap the bathtub for a water treatment plant or a grid battery site — the two
+plants this project guards — and the floor is a town.
 
 ## Why you can't just fix the controller
 
@@ -91,7 +91,7 @@ actually install.
         v   Modbus TCP
    controller                  unchanged, obeys anything it is told
         |
-      plant                    pumps, valves, dose injectors, sensors
+      plant                    dose injectors, pumps, inverters, breakers
 ```
 
 Modbus TCP is just the language controllers speak over a network cable. It's
@@ -101,19 +101,23 @@ project exists.
 
 ## What's in here
 
-Four plants. Three of them form a chain, where each is in the project because
-the one before it ran out of road.
+Two plants, and the second exists because the first ran out of road.
 
 | Plant | What it is | Why it's here |
 | --- | --- | --- |
-| [Storage tank](#the-storage-tank) | one tank, a pump, an outlet valve | the base case, and the blind spot that motivates the two after it |
-| [Battery site](#the-battery-site) | sixteen units, 30.8 MW, three independent meters | what a second measurement of the same quantity buys, and what takes it away again |
+| [Storage site](#the-storage-site) | sixteen battery units, 30.8 MW, three independent meters | what a second measurement of the same quantity buys, and what takes it away again |
 | [Treatment works](#the-water-treatment-works) | eight stages, twenty-two devices, six zones | what to do when the quantity that decides public safety has no instrument on it |
-| [Device matrix](#other-senders-other-receivers) | five kinds of sender against three kinds of receiver | a separate question: one station writing to one PLC is not what a plant looks like |
+
+Each one runs live in a browser, with its own command:
+
+```bash
+python scripts/run_site.py     # the storage site
+python scripts/run_water.py    # the treatment works
+```
 
 And two experiments that test the idea rather than the implementation. One
 takes [twelve reported incidents](#attacks-that-actually-happened) and asks
-which of them this device could have spoken to, including the four where the
+which of them this device could have spoken to, including the five where the
 answer is no. The other runs the same attacks over OPC UA at three security
 modes and measures [what encryption costs the guard](#what-encryption-costs-the-guard).
 
@@ -123,186 +127,24 @@ the caveats left in their own sections:
 
 | | Objected to | Damage prevented | Ordinary commands refused |
 | --- | --- | --- | --- |
-| Storage tank | 6 of 7 | 5 of 6 | 0 of 181 |
-| Battery site | 13 of 13 | 5 of 5 | 0 of 3783 |
+| Storage site, scripted | 13 of 13 | 5 of 5 | 0 of 3783 |
+| Storage site, live | 8 of 10 | 8 of 8 | 0 of 150 |
 | Treatment works | 9 of 9 | 9 of 9 | 0 of 57 |
-| Device matrix | 60 of 60 | 38 of 38 | 0 of 336 |
-| Incident-derived | 8 of 8 | 8 of 8 | — |
+| Incident-derived | 7 of 7 | 7 of 7 | — |
 
-Those denominators are not comparable with each other and the counts are not
-predictions. Each section says what its own numbers mean and what they leave
-out.
+The storage site's live row is the honest one: two of its ten attacks defeat
+the guard and are on the page saying so, and two more harm what the guard
+knows rather than the equipment, so they are scored on whether it works out
+which instrument to disbelieve rather than on damage.
 
-## The storage tank
+## The storage site
 
-Everything started against a simulated tank, written in Python, with numbers
-chosen to behave like real equipment.
-
-The tank is 1 square metre across and 2 metres tall. The pump can push in 0.05
-cubic metres of water per second at full speed, and takes 5 seconds to go from
-stopped to full speed, because a real motor drive ramps rather than jumping. The
-outlet valve takes about 4 seconds to travel from shut to open. The level sensor
-is accurate to about 5 millimetres, and its reading wobbles, because real sensors
-wobble. Above 1.80 metres the tank overflows; below 0.20 metres the pump runs dry
-and wrecks itself.
-
-The controller updates ten times a second. That 100 millisecond gap matters
-later: it's the budget the guard has to make a decision without slowing the plant
-down.
-
-One detail is there on purpose. The guard's idea of the tank is deliberately
-wrong by 4 percent. It thinks the pump is slightly stronger than it is and the
-valve slightly weaker. A real engineer works from a datasheet, and a datasheet is
-never exactly the machine in front of you. A guard that only worked with a
-perfect model would fall over on its first day in a real plant.
-
-### The five rules
-
-R1, range, checks the command against what the equipment is physically rated
-for. A valve cannot be 250 percent open. This catches the clumsiest attacks and
-almost nothing else.
-
-R2, dynamics, looks at sequences rather than single commands. Slamming a valve
-shut and open four times in three seconds isn't a person operating a plant. It's
-a pressure surge, called water hammer, that can split a pipe. R2 also notices
-someone writing ten or more commands a second, which no operator station does.
-
-R3, prediction, is the one that catches the bathtub attack. The guard takes the
-command, runs its model of the tank forward three seconds, and looks at where the
-water ends up. Tap on and plug shut are both fine as instructions. Together, from
-1.4 metres, they end at the ceiling.
-
-R4, consistency, checks the sensor against physics. If the reading says the level
-is holding steady while the pump has been running full for a minute with the
-outlet shut, one of those two things is a lie. Since water doesn't negotiate, the
-reading is the lie.
-
-R5, lockout, stops an attacker from undoing a shutdown. Once the guard has
-tripped the process to safety, commands that would recreate the same dangerous
-condition stay refused until a human clears it.
-
-### Three decisions that do most of the work
-
-R3 compares against doing nothing, not against the limit. The obvious version of
-R3 asks whether the predicted path crosses the danger line. That version is worse
-than having no guard at all, and here's why. When a tank is already heading for an
-overflow, every possible future crosses the line, including the one where the
-operator opens the outlet to save it. The obvious guard blocks the rescue. So R3
-compares the proposed command against simply holding whatever command is already
-in force, and objects only when the proposal is strictly worse. Opening the drain
-on a filling tank is always allowed.
-
-The guard rechecks the standing order ten times a second, not just when a command
-arrives. A guard that only inspects commands as they arrive has an easy bypass:
-send one legal command and wait. The tank fills on its own, no further traffic
-required. So the guard re-evaluates the currently held command on every cycle and
-can drive the pump and valve to safety by itself.
-
-Once the sensor is caught lying, the guard stops believing it. After R4 catches a
-reading that contradicts physics, the estimator stops taking corrections from the
-sensor and runs on its model alone. In the replay attack the operator's screen is
-frozen at 0.95 metres while the water is really at 1.13 metres and rising. The
-guard tracks the real number and trips.
-
-### What happened
-
-Seven attacks and five ordinary operating situations. Every one runs twice: once
-with the guard enforcing, and once with the guard watching but unable to act. The
-second run is the control. Without it, "the tank didn't overflow" proves nothing,
-because maybe it was never going to.
-
-| Metric | Result |
-| --- | --- |
-| Attacks detected | 6 of 7 |
-| Attacks that damaged the tank without the guard, and didn't with it | 5 of 6 |
-| Ordinary situations that raised a false alarm | 0 of 5 |
-| Ordinary commands wrongly blocked | 0 of 181 |
-
-| Scenario | Kind | Detected | Damage | Without the guard | Rules fired |
-| --- | --- | --- | --- | --- | --- |
-| `out_of_envelope` | attack | yes | no | damaged | R1 |
-| `overflow` | attack | yes | no | damaged | R3 |
-| `dryout` | attack | yes | no | damaged | R3 |
-| `water_hammer` | attack | yes | no | damaged | R2 |
-| `command_flood` | attack | yes | no | safe | R2 |
-| `replay_overflow` | attack | yes | no | damaged | R3, R4, R5 |
-| `stealthy_bias` | attack | no | yes | damaged | R3, R4, R5 |
-| `startup` | normal | no | no | safe | — |
-| `shutdown` | normal | no | no | safe | — |
-| `emergency_drain` | normal | no | no | safe | — |
-| `setpoint_change` | normal | no | no | safe | — |
-| `pump_trip_restart` | normal | no | no | safe | — |
-
-The last attack row needs reading carefully, and the two columns that look
-contradictory are the point. `stealthy_bias` fires three rules and is still
-scored as not detected, because detection counts only objections raised inside
-the attack window. By the time those rules fire the tank is at 2.00 m. A guard
-that eventually notices is not a guard.
-
-The false alarm number deserves a note about arithmetic. Zero of 181 counts only
-the commands inside the five ordinary scenarios. Counted across the whole test
-suite the number is 2 of 320, and those two are lockout refusals that happen
-inside attack scenarios after the guard has already tripped. Both numbers are
-published, because either one on its own tells half the story.
-
-Speed: the guard takes roughly 50 microseconds to decide on a command, and under
-130 microseconds in the slowest 1 percent of cases. That's a fraction of one
-percent of the 100 millisecond control cycle. Measured end to end over a real
-network socket, the proxy adds a few hundred microseconds to a round trip. Timing
-numbers move by 10 or 20 percent between machines and between runs, so treat
-these as the scale rather than as constants, and re-measure on your own hardware
-with `scripts/bench_latency.py`.
-
-### The attack that gets through
-
-`stealthy_bias` is in the suite on purpose. It does not attack the tank. It
-attacks the guard's belief about the tank, by adding a slowly growing lie to the
-level reading, slowly enough that R4 never sees a contradiction big enough to
-report in time.
-
-A test suite where every attack is caught usually means the attacks were picked
-to make the defence look good. So instead of one attack, the sweep runs the same
-attack at many different speeds and reports where the guard stops winning.
-
-| Lie added per second | Caught after | Highest level reached | What happened |
-| --- | --- | --- | --- |
-| 0.2 to 1.0 mm | never | 1.38 to 1.67 m | too slow to do damage |
-| 2.0 mm | never | 2.00 m | the attack wins |
-| 3.0 to 5.0 mm | 147 to 246 s | 2.00 m | caught, too late |
-| 10 to 50 mm | 1 to 16 s | 1.31 to 1.43 m | stopped |
-
-There's a band, roughly 2 to 5 millimetres per second, where the attacker is both
-invisible and effective. This isn't a tuning mistake and no threshold setting
-fixes it. Making R4 twitchier to catch 2 millimetres per second trades directly
-against the zero false alarms, and the false alarm rate is what decides whether
-operators leave the guard switched on or rip it out.
-
-Closing that band needs information this design doesn't have: a second
-measurement of the same physical thing, arriving by a different physical path.
-That sentence is why the rest of this project exists.
-
-### What the tank numbers don't prove
-
-The tank is simulated. No physical controller has been in the loop, so the
-proxy's behaviour against real vendor hardware is untested.
-
-The attacks and the rules were written by the same person, and some thresholds
-were set after looking at the attacks. That makes 6 of 7 a description of this
-suite, not a prediction about attacks nobody has thought of yet. The sweeps carry
-more weight than the counts, because a boundary says something a sample can't.
-
-The rules are shaped for one tank. The shapes generalise. The numbers don't, and
-working them out for a new process is engineering, not configuration.
-
-If an attacker can reach the guard itself, or rewire around it, none of this
-holds.
-
-## The battery site
-
-The tank work ended on a limitation it couldn't fix from inside: a slow enough
-lie on one sensor is undetectable when that sensor is the only thing measuring
-the quantity. Fixing it needs a second, physically independent measurement, which
-is a design change and not a setting.
+A guard with one instrument can be lied to slowly. Bias a single sensor gently
+enough and nothing it reports ever contradicts physics by more than noise, so
+the only detector available is one that compares a model against that same
+sensor, and the attacker is dragging both. Closing that needs a second,
+physically independent measurement, which is a design change and not a
+setting.
 
 A grid battery site has three of them. The power leaving the site is measured by
 the revenue meter the utility bills against, by adding up what each battery unit
@@ -311,7 +153,7 @@ Different hardware, different cables, different vendors, different protocols, al
 measuring the same power. The site already pays for that redundancy for billing
 and for protection. Using it to catch a liar costs nothing extra.
 
-So the guard also runs against a site modelled on a utility-scale battery
+So the first plant is a site modelled on a utility-scale battery
 installation: sixteen units of 1.927 MW each (30.8 MW and 62 MWh in total) behind
 a 20 MW export limit and a 25 MVA transformer, with a site controller, protection
 relays, a revenue meter, redundant switching, SCADA, a jump server and a
@@ -328,6 +170,33 @@ came from.
 | Ordinary situations clean | 7 of 7 |
 | Ordinary commands wrongly blocked | 0 of 3783 |
 | Lying measurement named correctly | 1 of 1 |
+
+### Watching it
+
+```bash
+python scripts/run_site.py
+```
+
+The page draws the yard: sixteen units each with their own charge and
+temperature, the collection bus, the transformer, the breaker, the grid
+connection, and the three instruments drawn where they actually sit in the
+circuit. Seeing all three side by side is the point, because on a real site
+nobody can, which is how two frozen readings come to outvote a live one.
+
+Ten attacks run from the page and two of them defeat the guard, which their
+own cards say. Two more are marked as harming what the guard knows rather
+than the equipment: biasing a meter moves no power, so scoring it on damage
+would mark a success as a failure. Its win is naming which instrument to
+disbelieve, and it does that with under half a megawatt of lie accumulated.
+
+Nothing starts from fixed numbers. Each run gives every unit its own charge
+and temperature and dispatches the site to whatever it happens to be doing,
+then reports the seed so an interesting run can be reproduced. Doing that
+found a real fault: every pack estimator had been anchored to the fleet
+average, so a unit ten per cent below the mean looked from the first scan
+like one whose reported charge had drifted, B2 said so, and the guard tripped
+protectively on a site nobody had touched. A guard put in front of a running
+yard reads each unit first.
 
 Across the whole suite, 1200 of 7831 commands labelled ordinary are flagged.
 Almost all of them are the site controller's own commands inside attack
@@ -476,10 +345,10 @@ in [`docs/bess-design.md`](docs/bess-design.md).
 
 ## The water treatment works
 
-The tank and the battery site both argue about a quantity somebody is
-measuring. The tank has one instrument and can be lied to slowly. The site has
-three and can be lied to only within a bound. Both arguments assume the number
-that matters is on an instrument somewhere.
+The storage site's argument is about a quantity three instruments measure:
+with three of them an attacker can shift the number only so far before the
+vote catches it. That argument assumes the number that matters is on an
+instrument somewhere.
 
 A treatment works is where that assumption runs out, so the project has one:
 eight stages from a river intake to the mains, twenty-two devices across six
@@ -489,7 +358,7 @@ zones, five controllers, nine analysers, and exactly one guarded conduit.
 python scripts/run_water.py
 ```
 
-### Three things a tank cannot show
+### Three things the battery site cannot show
 
 The dangerous quantity is a chemical dose rather than a position. A pump is
 open or shut, and the worst an attacker does with it is move it. A dose is a
@@ -655,76 +524,6 @@ What carries weight here is not the count but the shape of the thing being
 defended: a works has a safety-critical quantity with no instrument on it, and
 that is true of real works whoever writes the test suite.
 
-## Other senders, other receivers
-
-An operator station writing to a PLC is the textbook picture and it is not what
-a plant looks like. Commands also come from supervisory masters, peer
-controllers, engineering laptops and historians, and they land on drives and
-remote terminal units as well as on PLCs. So the guard now runs against three
-kinds of receiver and five kinds of sender, over real TCP sockets.
-
-The physics is the same everywhere. What differs is everything between a
-command on the wire and the pump. A PLC takes a pump command as tenths of a
-percent in a register. A variable-frequency drive takes it as a fraction of
-full scale, where full scale means whatever its maximum-frequency parameter
-currently says. An RTU takes it as one bit closing a contactor, which means
-full speed at once with no ramp. Read an RTU contactor as if it were a PLC
-speed word and you get 0.01 % instead of 100 %.
-
-Senders differ in how they talk. An operator clicks a few times a minute, a
-peer controller writes every scan for as long as it runs. One write-rate
-threshold cannot serve both: set it for the operator and the peer controller
-is a permanent flood, set it for the peer controller and a script hammering the
-valve is ordinary traffic. So R2 counts writes per sending device against a
-budget for that device's class. Its other half, the water-hammer check, counts
-across every sender, because two compromised devices taking turns on a valve
-hammer the pipe as hard as one does.
-
-Sixty sender and receiver pairs, eleven attacks, each run with the guard
-enforcing and again with it powerless.
-
-| Metric | Result |
-| --- | --- |
-| Attacks the guard objected to | 60 of 60 |
-| Pairs that damaged the plant unguarded | 38 |
-| Of those, damage prevented | 38 of 38 |
-| Ordinary writes refused | 0 of 336 |
-| Added round trip | p50 105 us, p99 353 us |
-
-Some writes cannot be judged by a physics rule at all: a write to an address
-the guard has no description for, a write to a drive's ramp or maximum
-frequency, a mask write whose result depends on what the register already
-holds, a diagnostics function code. None of those are physics questions, so a
-wire policy answers them before the rules run, and it refuses by default.
-
-Turning that policy off is the interesting measurement, because it runs first
-and so takes credit for everything it stops. With it off, the physics rules
-alone still catch all sixty pairs and prevent all thirty-eight. The policy is
-load-bearing for four of them, the mask writes, and those are not a physics
-failure: the value a mask write produces is not in the frame, so there is
-nothing to judge. That reads against the policy more than for it.
-
-### What this part does not show
-
-Sixty of sixty is not a claim about attacks in general. The attacks and the
-rules were written by the same person.
-
-Water hammer is detected on all twelve of its pairs and damages the plant on
-none, because this tank models level and not pressure. Those pairs say
-something about detection and nothing about damage.
-
-Twelve pairs are stopped by source scoping before any physics runs, because the
-peer controller is configured to write the valve and those attacks write the
-pump. Eight more do no damage unguarded whatever the guard does, because the
-RTU opens its own pump contactor at 1.70 m. They are reported as having no
-damage to prevent rather than counted as saves.
-
-The guard learns who is talking from the source address of the connection and
-nothing else. An attacker who has taken over the operator station inherits its
-identity, and a spoofed address defeats the check outright.
-
-Full detail is in [`docs/devices.md`](docs/devices.md).
-
 ## Attacks that actually happened
 
 Everything above was written from the design outward. Each scenario exists to
@@ -785,7 +584,7 @@ rate or volume can see anything wrong with it.
 | Of those, the guard prevented it | 8 of 8 |
 
 The last two rows of that detection block are split for the same reason the
-device matrix splits them. An access check that stops an attack is worth having
+incident catalogue splits them. An access check that stops an attack is worth having
 and is not evidence for the claim this project makes. The one incident carried
 by the access policy alone is the Unitronics intrusion, where the attack is a
 write from a device the guard has never heard of and there is nothing physical
@@ -804,67 +603,82 @@ throughout. OPC UA is the protocol a plant replaces Modbus with, and it changes
 that: a client and a server negotiate a security mode, and the negotiation
 decides how much of their conversation anybody else can read.
 
-Same guard, same attacks, same tank, three times, changing only that setting.
+Same guard, same attacks, same storage site, three times, changing only
+that setting.
 
 Under `None` everything is cleartext. The guard decodes the write, runs the
-same five rules, and refuses by withholding the request and answering the
-client with a `BadUserAccessDenied` in the device's voice. Withholding a
-request leaves the two ends disagreeing about how many messages have passed, so
-it renumbers the rest of the conversation in both directions. The write never
+same B1 to B8, and refuses by withholding the request and answering the client
+with a `BadUserAccessDenied` in the device's voice. Withholding a request
+leaves the two ends disagreeing about how many messages have passed, so it
+renumbers the rest of the conversation in both directions. The write never
 lands and the session carries on.
 
 Under `Sign` the guard still reads every write and can alter none of them,
-because each message is signed and the guard has none of the keys. It can still
-refuse, by withholding the frame and cutting the channel, and it can still
-write a protective command on its own session.
+because each message is signed and the guard has none of the keys. It can
+still refuse, by withholding the frame and cutting the channel, and it can
+still write a protective command on its own session.
 
 Under `SignAndEncrypt` sixteen bytes of each message stay legible: the type,
 the length, the channel and the key. Nothing in them says which node is being
 written, or to what.
 
-The interesting result is not that the guard goes blind. It is what happened to
-the half that was supposed to survive. The supervisor polls the level itself,
-so it never needed to read anyone else's traffic, and the expectation was that
-it would come through intact. It did not. Its lookahead integrates a model
-forward under the commands the guard has forwarded, and on an encrypted channel
-it has forwarded commands it never read, so the model says both actuators are
-shut. When the level rose, the consistency check reached the only conclusion
-its premise allows: the transmitter must be lying. It went open loop, froze its
-estimate at 0.99 m, and watched the tank fill to 2.00 m while holding a CUSUM
-above 20,000.
+Two things about this vantage point are worth stating before the numbers. A
+bump-in-the-wire on one OPC UA session reads what that server publishes and
+nothing else, so the site's three independent measurements are not three
+nodes on this endpoint — they are three instruments on three conduits, and
+this device sees one figure. The guard is told it has one source rather than
+being handed the same number three times, because three copies of one reading
+would look like three instruments agreeing and would be a lie about what the
+guard knows. And a guard spliced into a running site has not seen the command
+that put the site where it is: left at zero, its idea of what has been
+ordered says the fleet is idle, and the first ordinary dispatch then looks
+like the whole site starting from a standstill. It refused seventy of
+seventy-four honest writes that way before it was made to read the standing
+order first.
 
-That is a design fault rather than a tuning problem, so the guard now carries a
+The interesting result is not that the guard goes blind. It is what happened
+to the half that was supposed to survive. The guard's reasoning works forward
+from the commands it has accepted, and on an encrypted channel it accepts
+commands it never read, so its picture of the fleet says every unit is where
+it last saw it. When the power at the connection climbs, the cross-source
+check reaches the only conclusion its premise allows: an instrument must be
+lying. It accuses a healthy meter and goes on believing a site that is not
+there.
+
+That is a design fault rather than a tuning problem, so the guard carries a
 second supervisor that runs only when it knows it is command-blind. It reads
-the level and the level's slope, predicts forward with no model at all, and
-trips on the measurement. It is the weakest protection in the project, it has
-no idea which command caused anything, and it is the only thing left on an
-encrypted channel.
+the export and the export's slope, predicts forward with no model at all, and
+trips against the transformer rather than against the export limit — the
+limit is a number on the wire an attacker may already have moved, and the
+transformer rating is iron. It is the weakest protection in the project and
+the only one that survives an encrypted channel.
 
-Two attacks show what that is worth. The overflow is prevented in all three
-modes, because its commands are individually legal, nothing refuses them at the
-wire in any mode, and the supervisor that saves the tank works blind. The
-set-point write separates them: refused on its range under `None` before the
-tank moves; refused under `Sign` by cutting the channel, after which the
-operator cannot get back in and every recovery write fails; and under
-`SignAndEncrypt` it lands, the control loop starts filling toward a target
-above the top of the tank, the blind supervisor trips the pump repeatedly, the
-control loop overrides each trip because the guard cannot see or stop its
-commands, and the tank overflows.
+What that is worth is less than the tank's version was, and the result is
+sharper for it. Under `SignAndEncrypt` the over-export attack still damages
+the site: the blind supervisor fires, but by the time measured export has
+crossed its threshold the transformer is already overloaded. A supervisor
+that can only react to a quantity after it has moved cannot prevent damage
+that happens as it moves.
 
-| What the guard could read | None | Sign | SignAndEncrypt |
-| --- | --- | --- | --- |
-| Request and response bytes legible | 100.0% | 100.0% | 9.5% |
-| Request bodies decoded | 1361 | 1032 | 0 |
-| Ordinary writes refused | 0 of 34 | 0 of 28 | 0 of 31 |
+The headline table for this experiment is not reproduced here. The figures
+that used to sit in it were measured against the storage tank, and the
+experiment now runs against the storage site, so quoting them would be
+quoting a different plant. Regenerate them with `scripts/run_opcua.py`, which
+writes the whole matrix to `results/opcua/`. What has been checked by hand on
+the new plant, and is safe to state: under `None` the guard decodes every
+write and refuses the over-export attack without the site leaving its normal
+operating point; with the guard watching instead, the same attack reaches
+29.5 MW through a 25 MVA transformer and damages it; and under
+`SignAndEncrypt` nothing is decoded at all, the blind supervisor fires, and
+the site is damaged anyway.
 
-Two things in the results need reading carefully. The `Sign` column looks as
-good as `None` and is not: four of its five refusals were carried out by
-cutting the channel, and in every one the operator's writes after the attack
-window all failed. The plant was saved and the operator was locked out of it.
-And the encrypted column has a false alarm in it. The only detector left there
-counts message arrivals and cannot tell a read from a write, so a
-reconnaissance sweep that writes nothing looks like a flood, and the guard cuts
-the operator's session over it.
+Two things in the results need reading carefully whenever they are
+regenerated. A `Sign` column that looks as good as `None` is not: refusals
+there are carried out by cutting the channel, and the operator's writes after
+the attack window fail too, so the plant is saved and the operator is locked
+out of it. And the encrypted column will carry a false alarm, because the
+only detector left there counts message arrivals and cannot tell a read from
+a write, so a reconnaissance sweep that writes nothing looks like a flood.
 
 The rules did not get worse. The traffic they run on disappeared. Full detail,
 including the deployment option this does not model, is in
@@ -879,167 +693,121 @@ pip install -r requirements.txt
 Nothing else needs installing. The scripts add `src/` to the path themselves,
 and figures are drawn without a display.
 
-Three of these open something you can watch. The rest print results.
-
 ```bash
-python scripts/run_water.py                    # the treatment works, live
-python scripts/run_live_demo.py                # the tank, live, interactive
-python scripts/run_live.py tank                # one scripted site, narrated
-python scripts/run_live.py battery
+python scripts/run_site.py                 # the storage site, live
+python scripts/run_water.py                # the treatment works, live
+python scripts/run_live.py battery         # the scripted site run, narrated
 
-python scripts/run_demo.py --attack overflow --duration 25
-python scripts/run_eval.py --stealth-sweep
 python scripts/run_site_eval.py --sweeps
-python scripts/run_matrix.py --ablation
 python scripts/run_incidents.py --matrix
 python scripts/run_opcua.py
-python scripts/bench_latency.py
 python -m pytest
 ```
 
-Each site has its own command and none of them runs two. The sites keep
-different time — the tank moves in seconds, the works in tens of minutes, the
-battery site in whatever the ramp takes — and one invocation that played them in
-sequence left nobody able to say afterwards which numbers belonged to which
-plant.
+Each plant has its own command and none of them runs two. They keep different
+time — a battery warms up over tens of minutes and a contact tank fills over
+forty — and one invocation that played them in sequence left nobody able to
+say afterwards which numbers belonged to which plant.
 
-`run_water.py` is the one to run first, and the section above describes what it
-puts on screen. It opens on `http://127.0.0.1:8701/`.
+Neither live page starts from the same numbers twice. The works meets a
+different river each run, with the flow it draws tied to how dirty that water
+is, because a plant takes less when the filters are the bottleneck. The yard
+starts with every unit on its own charge and temperature and the site
+dispatched to whatever it happens to be doing: charging overnight, idling, or
+into the evening peak. A run with no seed picks one and reports it, so an
+interesting one can be reproduced.
 
-`run_live_demo.py` is the tank with the script taken out. The stack stands up
-with ordinary traffic flowing and then waits for you. The page draws the whole
-topology: five masters with their source addresses, the guard with a lamp per
-rule, the field device with its tank drawn to scale. Every frame the guard
-judges crosses the wire as a dot in the colour of the verdict it got, three
-charts fill as the plant moves, and the scanner's device table says what is
-still answering. Three buttons do the demonstrating: launch any attack the
-matrix defines for that device, turn enforcement off and run the same attack
-again, or cut the link to the device and watch the scanner work out within
-three sweeps that nothing is answering while the plant carries on behind it.
+`run_site.py` opens on `http://127.0.0.1:8702/` and `run_water.py` on
+`http://127.0.0.1:8701/`. Both draw the plant, every measurement against the
+limit that applies to it, and a column saying in ordinary English what just
+happened and why. The guard can be switched between enforcing and watching
+while an attack runs, which puts the whole method into one gesture: the same
+plant, the same attack, a minute apart.
 
-`run_live.py` narrates one scripted site while it happens, to a terminal that
-redraws in place and to a browser at `http://127.0.0.1:8765/`. Both read one
-event stream, so neither can show a number the other does not have. It takes
-the site as an argument and will not start without one. `--no-web` skips the
-browser, and outside a terminal it falls back to one line per event so a
-transcript stays readable.
-
-`run_demo.py` is the short version of the whole project. It stands up the
-simulated controller, the guard and an attacker driving a stock `pymodbus`
-client, then runs one attack twice, once through the guard and once straight at
-the controller:
-
-```
-                              no guard     through guard
-----------------------------------------------------------------------
-final true level (m)             2.000             1.660
-overflowed                        True             False
-protective trips                     -                 1
-
-Result: damage prevented
-```
-
-Two things to know before you run it. The attack needs at least 20 seconds to
-reach the overflow limit, so a shorter `--duration` prints "no damage in either
-run" and proves nothing. And a single-scenario site run overwrites
-`results/site_metrics.json` with partial data, so pass `--out` somewhere else
-when you only want one scenario.
-
-Approximate times on a laptop: the demo takes twice whatever `--duration` you
-give it, `run_eval.py` takes 6 seconds, `run_site_eval.py` takes 95 seconds and
-about 4 minutes with `--sweeps`, and the test suite takes about 110 seconds. The
-device matrix takes about twenty minutes with `--ablation` and about half that
-without. `run_incidents.py` takes a couple of seconds, or a few minutes with
-`--matrix`, and reads the OPC UA rows out of `results/opcua/` if that has been
-run. `run_opcua.py` takes several minutes: forty-two episodes, each paying for
-its own secure-channel handshake.
-
-Two of these are not reproducible to the sample, and say so in their own
-output. The device matrix and the OPC UA experiment run over real sockets on a
-scaled clock, so the number of writes an episode produces moves by a few either
-way between runs. Their outcomes are stable; their counts are not. Everything
-under `results/` is regenerated by these commands and is not tracked by git.
+`run_opcua.py` takes several minutes: forty-two episodes, each paying for its
+own secure-channel handshake. Its counts move by a few either way between
+runs because it runs over real sockets on a scaled clock; its outcomes are
+stable. Everything under `results/` is regenerated by these commands and is
+not tracked by git.
 
 ## How the code is laid out
 
 ```
 src/otguard/
-  config.py              typed configuration, strict about unknown keys
-  clock.py               one timeline, faster than the wall
-
-  sim/water_tank.py      the tank: mass balance, actuator travel, sensor noise
-  bess/                  battery model, fleet, connection point, three meters
-  water/
-    types.py             stages, command points, what each harm means
-    plant.py             the works: eight stages, transport delay, harm scoring
-    topology.py          six zones, six conduits, twenty-two devices
-    metrics.py           the fourteen measurements and the limits on each
-  site/topology.py       IEC 62443 zones and conduits over the Purdue levels
-
-  guard/
-    types.py             Command, Observation, Verdict
-    estimator.py         Kalman filter, CUSUM, lookahead, equilibrium
-    rules.py             R1 to R5
-    guard.py             decisions, supervision, trips, lockout
-    site_estimator.py    per-unit charge and temperature estimates, voting
-    site_rules.py        B1 to B8
-    site_guard.py        site decisions, supervision, curtailment
-    water_estimator.py   belief over the works, and the forward model
-    water_rules.py       W1 to W8
-    water_guard.py       water decisions, supervision, protective actions
-
-  modbus/
-    protocol.py          MBAP and PDU framing, every write function code
-    plc_server.py        simulated controller, obeys anything by design
-    device.py            protocol and scan loop shared by every receiver
-    field_devices.py     drive gateway and remote terminal unit
-    devicemap.py         what each point on each device means
-    registers.py         the register map the tank controller exposes
-    inventory.py         who may talk, and what to do with unjudgeable frames
-    masters.py           the senders: HMI, SCADA, peer controller, historian
-    proxy.py             the guard on the wire
-    deviceproxy.py       the guard on the wire, for any sender and receiver
-  protocols/
-    dnp3.py              framing with the 0x3D65 CRC, CROB, select-before-operate
-    goose.py             IEC 61850 frames, stNum and sqNum handling, subscriber
-    prp.py               redundancy control trailer, dual-LAN mismatch
-    rest.py              site controller API, roles and tokens
-  opcua/
-    framing.py           the OPC UA binary transport, and what each mode hides
-    nodes.py             the device's address space, and the guard's map of it
-    device.py            a field device that speaks OPC UA, security modes and all
-    proxy.py             the guard on the wire, with powers that depend on the mode
-    masters.py           the clients: one honest, five not
-    certs.py             self-signed test certificates
-
-  scan/
-    probe.py             liveness probes, and what each one's answer proves
-    scanner.py           up/down per device, debounced both ways
-    targets.py           the device lists, and which rows are model reads
-  live/
-    events.py            what a watcher is told, in one JSON-safe shape
-    bus.py               fan-out that never blocks the plant
-    terminal.py          the screen, redrawn in place
-    web.py               server-sent events over a hand-rolled HTTP server
-    page.py              the scripted view
-    demo.py              the interactive tank: attacks, enforcement, link cuts
-    demo_page.py         the tank's browser view
-    water_demo.py        the works: plant, guard, its own control, nine attacks
-    water_page.py        the works' browser view
-    plain.py             every event rendered into English a visitor can read
-
-  scenarios/             labelled attacks and ordinary situations
-  scenarios/incidents.py twelve reported incidents, and what speaks to each
-  eval/                  harness, metrics, sweeps, figures, command line
-  eval/matrix.py         every sender against every receiver, over sockets
+  bess/__init__.py
+  bess/megapack.py
+  bess/metrics.py
+  bess/site.py
+  bess/types.py
+  clock.py
+  config.py
+  eval/__init__.py
+  eval/figstyle.py
+  eval/incident_report.py
+  eval/incidents.py
+  eval/opcua_experiment.py
+  eval/opcua_report.py
+  eval/site_harness.py
+  eval/site_metrics.py
+  eval/site_report.py
+  eval/site_sweeps.py
+  guard/__init__.py
+  guard/site_estimator.py
+  guard/site_guard.py
+  guard/site_rules.py
+  guard/types.py
+  guard/water_estimator.py
+  guard/water_guard.py
+  guard/water_rules.py
+  guard/wire.py
+  live/__init__.py
+  live/bus.py
+  live/events.py
+  live/plain.py
+  live/site_demo.py
+  live/site_page.py
+  live/terminal.py
+  live/ui.py
+  live/water_demo.py
+  live/water_page.py
+  live/web.py
+  modbus/__init__.py
+  modbus/protocol.py
+  opcua/__init__.py
+  opcua/certs.py
+  opcua/device.py
+  opcua/framing.py
+  opcua/masters.py
+  opcua/nodes.py
+  opcua/proxy.py
+  protocols/__init__.py
+  protocols/dnp3.py
+  protocols/goose.py
+  protocols/prp.py
+  protocols/rest.py
+  scan/__init__.py
+  scan/probe.py
+  scan/scanner.py
+  scan/targets.py
+  scenarios/__init__.py
+  scenarios/base.py
+  scenarios/bess_attacks.py
+  scenarios/bess_normal.py
+  scenarios/incidents.py
+  scenarios/site_base.py
+  site/__init__.py
+  site/topology.py
+  water/__init__.py
+  water/metrics.py
+  water/plant.py
+  water/topology.py
+  water/types.py
 
 config/default.yaml      every tunable number, with the reasoning next to it
-scripts/                 run_water.py, run_live.py, run_live_demo.py,
-                         run_demo.py, run_eval.py, run_site_eval.py,
-                         run_matrix.py, run_incidents.py, run_opcua.py,
-                         bench_latency.py
-tests/                   361 tests and one expected failure
-docs/                    design.md, bess-design.md, water.md, devices.md,
+scripts/                 run_site.py, run_water.py, run_live.py,
+                         run_site_eval.py, run_incidents.py, run_opcua.py
+tests/                   216 tests
+docs/                    design.md, bess-design.md, water.md,
                          incidents.md, opcua.md, live.md, heilmeier.md
 ```
 
@@ -1055,10 +823,6 @@ nine attacks, and the ordinary commands that have to get through.
 
 [`docs/bess-design.md`](docs/bess-design.md) covers the battery site: physics,
 rules B1 to B8, the protocols, the results, and where it fails.
-
-[`docs/devices.md`](docs/devices.md) covers the senders and receivers: what
-changes between device classes, what the wire policy is for, and where those
-numbers are weaker than they look.
 
 [`docs/incidents.md`](docs/incidents.md) covers the twelve reported incidents:
 which of them this guard could speak to, which it could not, and why the second

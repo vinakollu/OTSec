@@ -1,24 +1,28 @@
-"""The live view: one event stream, a terminal renderer and a browser renderer.
+"""The live view: one event stream, a terminal renderer and browser renderers.
 
-The stream is the single source of truth. Neither renderer reads the plant, so
-every number on either display arrived as an event and a disagreement between
-the two is a rendering bug rather than two opinions about the same tank.
+The stream is the single source of truth. No renderer reads a plant, so every
+number on every display arrived as an event, and a disagreement between two of
+them is a rendering bug rather than two opinions about the same site.
 """
 
 from .bus import EventBus, Subscription
-from .demo import InteractiveDemo
-from .demo_page import DEMO_PAGE
 from .events import Kind, LiveEvent
+from .site_demo import SiteDemo
+from .site_page import SITE_PAGE
 from .terminal import TerminalView
+from .water_demo import WaterDemo
+from .water_page import WATER_PAGE
 from .web import LiveServer
 
 __all__ = [
-    "DEMO_PAGE",
+    "SITE_PAGE",
+    "WATER_PAGE",
     "EventBus",
-    "InteractiveDemo",
     "Kind",
     "LiveEvent",
     "LiveServer",
+    "SiteDemo",
     "Subscription",
     "TerminalView",
+    "WaterDemo",
 ]

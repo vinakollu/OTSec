@@ -132,7 +132,7 @@ def format_detail(pairs: list[Pair]) -> str:
         "-" * 128,
         f"{'scenario':<18}{'mode':<17}{'outcome':<13}{'rules':<26}"
         f"{'blocked':>8}{'trips':>7}{'blind':>7}{'severed':>9}"
-        f"{'peak m':>8}{'unguard':>9}  {'operator'}",
+        f"{'peak MW':>8}{'unguard':>9}  {'operator'}",
         "-" * 128,
     ]
     for pair in sorted(pairs, key=lambda p: (p.scenario, p.mode.value)):
@@ -152,7 +152,7 @@ def format_detail(pairs: list[Pair]) -> str:
         lines.append(
             f"{pair.scenario:<18}{pair.mode.value:<17}{pair.outcome:<13}{rules:<26}"
             f"{g.writes_blocked + g.wire_blocked:>8}{g.trips:>7}{g.blind_trips:>7}"
-            f"{severed:>9}{g.peak_level_m:>8.2f}{u.peak_level_m:>9.2f}  {operator}"
+            f"{severed:>9}{g.peak_poi_mw:>8.2f}{u.peak_poi_mw:>9.2f}  {operator}"
         )
     return "\n".join(lines)
 

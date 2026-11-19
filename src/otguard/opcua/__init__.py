@@ -14,6 +14,6 @@ Importing this package needs ``asyncua``, which is an optional dependency.
 """
 
 from .framing import SecurityMode, Visibility
-from .nodes import TANK_POINTS, NodeMap, OpcPoint
+from .nodes import SITE_POINTS, NodeMap, OpcPoint
 
-__all__ = ["SecurityMode", "Visibility", "TANK_POINTS", "NodeMap", "OpcPoint"]
+__all__ = ["SecurityMode", "Visibility", "SITE_POINTS", "NodeMap", "OpcPoint"]

@@ -276,8 +276,8 @@ INCIDENTS: tuple[Incident, ...] = (
             "the plant's own equipment has the plant's own identity."
         ),
         evidence=(
-            Evidence("matrix", "unknown_source/hmi/plc"),
-            Evidence("tank", "overflow", "the spill itself, from an authentic source"),
+            Evidence("water", "outsider",
+                     "a command from a device the works has no record of"),
         ),
     ),
     Incident(
@@ -304,8 +304,6 @@ INCIDENTS: tuple[Incident, ...] = (
             "been positioned to see it. It would not have been."
         ),
         evidence=(
-            Evidence("tank", "stuxnet_overspeed_replay"),
-            Evidence("tank", "replay_overflow", "the continuous version"),
         ),
     ),
     Incident(
@@ -400,7 +398,6 @@ INCIDENTS: tuple[Incident, ...] = (
             "it."
         ),
         evidence=(
-            Evidence("tank", "overflow", "legal values, illegal consequence"),
             Evidence("site", "jump_server_bypass", "the remote-access route"),
         ),
     ),
@@ -425,8 +422,6 @@ INCIDENTS: tuple[Incident, ...] = (
             "that makes a breaker operation safe or not."
         ),
         evidence=(
-            Evidence("tank", "command_flood"),
-            Evidence("matrix", "write_flood/scada/plc"),
             Evidence("site", "goose_trip_spoof"),
         ),
     ),
@@ -457,8 +452,6 @@ INCIDENTS: tuple[Incident, ...] = (
             "without understanding it."
         ),
         evidence=(
-            Evidence("matrix", "interlock_disable/engineering/rtu"),
-            Evidence("matrix", "coil_sweep/hmi/rtu", "the interlock and the pump together"),
         ),
     ),
     Incident(
@@ -488,9 +481,10 @@ INCIDENTS: tuple[Incident, ...] = (
             "evidence below rather than against the works."
         ),
         evidence=(
-            Evidence("tank", "setpoint_overdose"),
+            Evidence("water", "oldsmar_overdose",
+                     "the dose ceiling raised, then dosed through"),
             Evidence("site", "rest_limit_tamper", "a limit raised, then obeyed"),
-            Evidence("opcua", "setpoint_jump", "the same write under three security modes"),
+            Evidence("opcua", "limit_tamper", "the same write under three security modes"),
         ),
     ),
     Incident(
@@ -542,7 +536,7 @@ INCIDENTS: tuple[Incident, ...] = (
             "are not public in enough detail to reproduce."
         ),
         evidence=(
-            Evidence("opcua", "overflow", "a conformant client, all three security modes"),
+            Evidence("opcua", "export_over_limit", "a conformant client, all three security modes"),
             Evidence("opcua", "parameter_tamper"),
         ),
     ),
@@ -569,8 +563,8 @@ INCIDENTS: tuple[Incident, ...] = (
             "such conduit."
         ),
         evidence=(
-            Evidence("matrix", "unknown_source/hmi/plc"),
-            Evidence("matrix", "unknown_source/hmi/rtu"),
+            Evidence("water", "outsider",
+                     "an internet-exposed controller written to from outside"),
         ),
     ),
 )

@@ -6,7 +6,8 @@ protocol encrypts itself?
 Each cell of the experiment runs the identical device, the identical guard and
 the identical attack over a real TCP connection, changing only the security
 mode the device and its client negotiated. Every cell also runs a second time
-with the guard watching but powerless, because "the tank did not overflow" is
+with the guard watching but powerless, because "the site stayed inside its
+limit" is
 not a result on its own.
 
 The attack is issued through the operator station's own session rather than
@@ -43,10 +44,10 @@ WARMUP_S = 10.0
 ATTACK_START_S = 30.0
 DEFAULT_DURATION_S = 150.0
 DEFAULT_SPEED = 20.0
-#: The same starting level, holding commands and attack timing as the
-#: in-process ``overflow`` scenario, so the two sets of numbers can be read
+#: The same starting dispatch and attack timing as the in-process
+#: ``poi_export_violation`` scenario, so the two sets of numbers can be read
 #: against each other rather than only against themselves.
-DEFAULT_INITIAL_LEVEL_M = 0.95
+DEFAULT_INITIAL_DISPATCH_MW: float = 8.0
 
 #: The order the report presents them in: readable and rewritable, readable
 #: only, neither.
@@ -81,7 +82,7 @@ def _since(t: float | None, t0: float) -> float | None:
 
 
 def _reset(device: SimulatedOpcUaDevice, proxy: OpcUaGuardProxy, clock: SimClock,
-           initial_level_m: float, *, place_plant: bool = True) -> float:
+           initial_dispatch_mw: float, *, place_plant: bool = True) -> float:
     """Put the plant and the scoring back to zero, and return the new time origin.
 
     Called twice: once after the session is up, to undo the drain that happened
@@ -95,11 +96,17 @@ def _reset(device: SimulatedOpcUaDevice, proxy: OpcUaGuardProxy, clock: SimClock
     looks like it ran. So the clock runs on and the episode carries an origin.
     """
     if place_plant:
-        device.tank.state.level_m = initial_level_m
-    device.tank.state.overflowed = False
-    device.tank.state.dried_out = False
-    device.peak_level_m = device.tank.state.level_m
-    device.min_level_m = device.tank.state.level_m
+        for unit in device.site.packs:
+            unit.set_power(initial_dispatch_mw / max(len(device.site.packs), 1))
+    device.site.state.poi_overloaded = False
+    device.site.state.breaker_damaged = False
+    for unit in device.site.packs:
+        unit.state.overcharged = False
+        unit.state.deep_discharged = False
+        unit.state.overheated = False
+    device.peak_poi_mw = device.site.state.p_poi_mw
+    device.min_poi_mw = device.site.state.p_poi_mw
+    device.peak_mva = 0.0
     proxy.reset_scoring()
     return clock.now()
 
@@ -115,8 +122,9 @@ class CellResult:
     detected: bool = False
     first_detection_t: float | None = None
     damaged: bool = False
-    peak_level_m: float = 0.0
-    min_level_m: float = 0.0
+    peak_poi_mw: float = 0.0
+    min_poi_mw: float = 0.0
+    peak_mva: float = 0.0
     honest: MasterStats = field(default_factory=MasterStats)
     recovery: MasterStats = field(default_factory=MasterStats)
     attack: MasterStats = field(default_factory=MasterStats)
@@ -176,8 +184,9 @@ class CellResult:
             "detected": self.detected,
             "first_detection_t": self.first_detection_t,
             "damaged": self.damaged,
-            "peak_level_m": round(self.peak_level_m, 3),
-            "min_level_m": round(self.min_level_m, 3),
+            "peak_poi_mw": round(self.peak_poi_mw, 3),
+            "min_poi_mw": round(self.min_poi_mw, 3),
+            "peak_mva": round(self.peak_mva, 3),
             "honest_writes": self.honest.attempted,
             "honest_writes_accepted": self.honest.accepted,
             "recovery_writes": self.recovery.attempted,
@@ -218,8 +227,9 @@ class CellResult:
             detected=bool(row["detected"]),
             first_detection_t=row.get("first_detection_t"),
             damaged=bool(row["damaged"]),
-            peak_level_m=float(row.get("peak_level_m", 0.0)),
-            min_level_m=float(row.get("min_level_m", 0.0)),
+            peak_poi_mw=float(row.get("peak_poi_mw", 0.0)),
+            min_poi_mw=float(row.get("min_poi_mw", 0.0)),
+            peak_mva=float(row.get("peak_mva", 0.0)),
             writes_decoded=int(row.get("writes_decoded", 0)),
             writes_blocked=int(row.get("writes_blocked", 0)),
             wire_blocked=int(row.get("wire_blocked", 0)),
@@ -260,7 +270,7 @@ async def run_cell(
     enforce: bool = True,
     speed: float = DEFAULT_SPEED,
     duration_s: float = DEFAULT_DURATION_S,
-    initial_level_m: float = DEFAULT_INITIAL_LEVEL_M,
+    initial_dispatch_mw: float = DEFAULT_INITIAL_DISPATCH_MW,
 ) -> CellResult:
     """Run one episode and return everything it produced."""
     result = CellResult(scenario=scenario, mode=mode, enforced=enforce)
@@ -270,11 +280,11 @@ async def run_cell(
 
     device = SimulatedOpcUaDevice(
         config, port=device_port, mode=mode, certs=certs,
-        clock=clock, initial_level_m=initial_level_m,
+        clock=clock, initial_dispatch_mw=initial_dispatch_mw,
     )
     proxy = OpcUaGuardProxy(
         config, mode, target_port=device_port, listen_port=proxy_port,
-        certs=certs, clock=clock, enforce=enforce, initial_level_m=initial_level_m,
+        certs=certs, clock=clock, enforce=enforce,
     )
     client = None
     try:
@@ -290,12 +300,12 @@ async def run_cell(
         # call the difference a result.
         client = await open_client(endpoint_url("127.0.0.1", proxy_port), mode, certs)
         ns = await namespace_index(client)
-        _reset(device, proxy, clock, initial_level_m)
+        _reset(device, proxy, clock, initial_dispatch_mw)
 
         # Now let the estimator lock on to a quiet plant, the same warm-up the
         # in-process harness uses, and only then start counting.
         await clock.sleep(WARMUP_S)
-        t0 = _reset(device, proxy, clock, initial_level_m, place_plant=False)
+        t0 = _reset(device, proxy, clock, initial_dispatch_mw, place_plant=False)
         result.t0 = t0
         device.run_until = t0 + duration_s
 
@@ -334,7 +344,7 @@ async def run_cell(
         # shared and keeps running, and the device's scan loop keeps stepping
         # the plant, so waiting out a disconnection on a channel the guard has
         # already cut hands the episode up to another two hundred simulated
-        # seconds. The tank then drains to 0.00 m with nobody driving it, long
+        # seconds. The site then runs on with nobody driving it, long
         # after the episode ended, and the cell is scored as a dry-out that
         # never happened inside the window.
         _collect(result, device, proxy)
@@ -358,8 +368,9 @@ def _collect(result: CellResult, device: SimulatedOpcUaDevice,
     result.detected = proxy.detected
     result.first_detection_t = _since(proxy.first_detection_t, result.t0)
     result.damaged = device.damaged
-    result.peak_level_m = device.peak_level_m
-    result.min_level_m = device.min_level_m
+    result.peak_poi_mw = device.peak_poi_mw
+    result.min_poi_mw = device.min_poi_mw
+    result.peak_mva = device.peak_mva
     result.writes_decoded = stats.writes_decoded
     result.writes_blocked = stats.writes_blocked
     result.wire_blocked = stats.wire_blocked
