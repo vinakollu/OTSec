@@ -806,7 +806,7 @@ src/otguard/
 config/default.yaml      every tunable number, with the reasoning next to it
 scripts/                 run_site.py, run_water.py, run_live.py,
                          run_site_eval.py, run_incidents.py, run_opcua.py
-tests/                   216 tests
+tests/                   249 tests
 docs/                    design.md, bess-design.md, water.md,
                          incidents.md, opcua.md, live.md, heilmeier.md
 ```

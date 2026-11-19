@@ -31,7 +31,7 @@ move slowly and be found by the vote, or corrupt all three independently.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from ..bess.types import MeasurementSource, SiteObservation
 from ..config import CrossSourceConfig, EnergyConfig, SiteModelConfig

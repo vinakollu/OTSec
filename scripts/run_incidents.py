@@ -7,7 +7,7 @@
 
 The matrix pairs run over real TCP sockets, so they take a few seconds each and
 are off by default. The OPC UA cells are read from ``results/opcua_metrics.json``
-if ``scripts/run_opcua.py`` has been run; otherwise those rows say so rather
+if ``scripts/run_opcua.py`` has been run. Otherwise those rows say so rather
 than reading as misses.
 """
 

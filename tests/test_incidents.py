@@ -14,10 +14,7 @@ from __future__ import annotations
 import pytest
 
 from otguard.eval.incidents import site_scenario
-from otguard.scenarios import site_by_name as by_name
-from otguard.scenarios.incidents import (
-    INCIDENTS, Evidence, Incident, Mechanism, Vantage,
-)
+from otguard.scenarios.incidents import INCIDENTS, Mechanism, Vantage
 
 VALID_KINDS = {"water", "site", "opcua", "none"}
 

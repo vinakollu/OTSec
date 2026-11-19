@@ -52,7 +52,7 @@ WATER_PAGE = (
 .sv-guard{fill:var(--good-bg); stroke:var(--good); stroke-width:1.4}
 .sv-guard.off{fill:var(--watch-bg); stroke:var(--watch); stroke-dasharray:5 4}
 .sv-guard-t{font-size:12.5px; font-weight:700; fill:var(--good)}
-.sv-guard.off + .sv-guard-t.sv-guard-t.off{fill:var(--watch)}
+.sv-guard.off + .sv-guard-t, .sv-guard-t.off{fill:var(--watch)}
 .sv-legend{font-size:10.5px; fill:var(--ink-3)}
 @media (prefers-reduced-motion:reduce){ .sv-flow{animation:none} }
 </style>
@@ -88,7 +88,7 @@ WATER_PAGE = (
 <div class="grid g-main">
   <section class="panel" style="display:flex; flex-direction:column">
     <h2>The process <span class="note">water left to right, commands down from the top and across the guard</span></h2>
-    <div class="body" style="padding:10px 14px 4px">
+    <div class="body scroll-x" style="padding:10px 14px 4px">
       <svg id="flow" viewBox="0 0 1400 440" role="img"
            aria-label="Schematic of the treatment works with live values at each stage"></svg>
     </div>
@@ -106,7 +106,7 @@ WATER_PAGE = (
     <div class="meters" id="meters"></div>
   </section>
   <section class="panel">
-    <h2>Recent history <span class="note">shaded band is the allowed range</span></h2>
+    <h2>Recent history <span class="note">scaled to the trace, the green band is the allowed range where it is in view</span></h2>
     <div class="charts" id="charts"></div>
   </section>
 </div>
@@ -255,35 +255,6 @@ function renderScenario(p) {
     + "to fill can be watched.";
 }
 
-function buildNetwork(topo) {
-  var zb = $("zones"); zb.innerHTML = "";
-  topo.zones.forEach(function (z) {
-    var d = el("div", "zone");
-    var h = el("h4", null, z.name);
-    h.appendChild(el("em", null, z.level));
-    d.appendChild(h);
-    d.appendChild(el("p", null, z.purpose));
-    topo.devices.filter(function (v) { return v.zone === z.name; }).forEach(function (v) {
-      var r = el("div", "dev");
-      var dot = el("span", "dot " + (v.critical ? "good" : ""));
-      r.appendChild(dot);
-      r.appendChild(el("code", null, v.name));
-      r.appendChild(el("span", "role", v.kind));
-      r.title = v.description + " (" + v.address + ", " + v.protocol + ")";
-      d.appendChild(r);
-    });
-    zb.appendChild(d);
-  });
-  var cb = $("conduits"); cb.innerHTML = "";
-  topo.conduits.forEach(function (c) {
-    var r = el("div", "cd" + (c.guarded ? " guarded" : ""));
-    r.appendChild(el("span", "glyph", c.guarded ? "✓" : "·"));
-    r.appendChild(el("code", null, c.source + " → " + c.target));
-    r.appendChild(el("span", null, c.protocol));
-    r.appendChild(el("span", "why", c.guarded ? "OTGuard sits here" : c.note));
-    cb.appendChild(r);
-  });
-}
 
 function renderState(p) {
   setMode(p.enforcing);

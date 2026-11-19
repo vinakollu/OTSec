@@ -44,7 +44,7 @@ from ..config import Config
 from ..site.topology import SiteTopology, default_site_topology
 from .site_estimator import PackEstimator, SourceVoter, VoteResult
 from .site_rules import SiteContext, SiteRule, default_site_rules
-from .types import Decision, RuleFinding, Verdict
+from .types import Decision, RuleFinding
 
 _POWER_HISTORY = 256
 

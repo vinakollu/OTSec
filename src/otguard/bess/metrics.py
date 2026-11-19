@@ -373,6 +373,7 @@ def assess(reading: SiteReading, site: SiteConfig | None = None,
             "limit_low": metric.limit_low, "limit_high": metric.limit_high,
             "target_low": metric.target_low, "target_high": metric.target_high,
             "scale_min": metric.scale_min, "scale_max": metric.scale_max,
+            "decimals": metric.decimals,
             "plain": metric.plain, "why": metric.why,
             "headline": metric.key in HEADLINE,
         })

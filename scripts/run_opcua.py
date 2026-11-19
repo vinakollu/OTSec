@@ -7,12 +7,12 @@
 
 Each cell runs a real OPC UA session over a loopback socket, through the guard,
 with a secure-channel handshake per episode. The full set is forty-two episodes
-and takes several minutes; ``--scenarios`` and ``--modes`` cut it down.
+and takes several minutes. ``--scenarios`` and ``--modes`` cut it down.
 
 Unlike the in-process evaluation this is not reproducible to the sample. It
 runs over real sockets at a scaled clock, so the number of writes an episode
 produces moves by a few either way between runs, exactly as the device matrix
-does. The outcomes are stable; the counts are not.
+does. The outcomes are stable. The counts are not.
 
 Certificates are generated on first use into ``--cert-dir`` and reused after
 that. They are self-signed test fixtures and nothing validates a chain.

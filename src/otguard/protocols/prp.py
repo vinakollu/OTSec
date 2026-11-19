@@ -37,7 +37,7 @@ not authenticate anything.
 from __future__ import annotations
 
 import struct
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import IntEnum
 
 PRP_SUFFIX = 0x88FB
